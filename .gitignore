@@ -1,11 +1,16 @@
 # Created by https://www.toptal.com/developers/gitignore/api/python,windows,macos,linux,vue,react,flask
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,windows,macos,linux,vue,react,flask
 
+# Local environment values; keep sanitized examples shareable
+.env
+.env.*
+!.env.example
+!.env.*.example
+
 ### Flask ###
 instance/*
 !instance/.gitignore
 .webassets-cache
-.env
 
 ### Flask.Python Stack ###
 # Byte-compiled / optimized / DLL files
@@ -360,3 +365,25 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/python,windows,macos,linux,vue,react,flask
+
+# Frontend package-manager logs
+/frontend/**/npm-debug.log*
+/frontend/**/yarn-debug.log*
+/frontend/**/yarn-error.log*
+/frontend/**/pnpm-debug.log*
+/frontend/**/lerna-debug.log*
+
+# Frontend build output and local settings
+/frontend/**/dist
+/frontend/**/dist-ssr
+/frontend/**/*.local
+
+# Frontend editor files; keep shared extension recommendations
+/frontend/.vscode/*
+!/frontend/.vscode/extensions.json
+/frontend/**/.idea
+/frontend/**/*.suo
+/frontend/**/*.ntvs*
+/frontend/**/*.njsproj
+/frontend/**/*.sln
+/frontend/**/*.sw?
