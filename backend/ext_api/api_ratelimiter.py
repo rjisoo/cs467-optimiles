@@ -4,32 +4,30 @@ import logging
 import asyncio
 import json
 from .api_exceptions import RateLimiterDailyQuotaExceeded, RateLimiterError
+from pathlib import Path
 
-default_config={
-    "url": "https://api.example.com",
-    "Usage":{},
-    "limit_per_month":{
-        "enabled": False,
-        "max_requests": 10000,
-        "current_quota": 0
-    },
-    "limit_per_day":{
+default_config = {
+    "url": "api.example.com",
+    "Usage": {},
+    "limit_per_month": {"enabled": False, "max_requests": 10000, "current_quota": 0},
+    "limit_per_day": {
         "enabled": False,
         "max_requests": 1000,
         "current_quota": 0,
         "current_day": "1970-01-01",
-        "reset_time": "21:35:00+00:00",  # Reset at midnight UTC
-        "soft_retry": False # flag for trying again after the quota is exceeded (Not yet implemented)
+        "reset_time": "21:35:00+00:00",  # Reset time
+        "soft_retry": False,  # flag for trying again after the quota is exceeded (Not yet implemented)
     },
-    "limit_per_second":{
-        "enabled": False,
-        "max_requests": 10,
-        "mode": "strict/loose"
-    }
+    "limit_per_second": {"enabled": False, "max_requests": 10, "mode": "strict/loose"},
 }
 
+
 class RateLimiter:
-    """Apply configured daily, monthly, and per-second API request limits.
+    """This class controls daily, monthly, and per-second limits(psl)
+        meant for API rate limit management.
+    Notes:
+    Monthly limit is not implemented.
+    JSON saving is a temporary measure, configuration backups should be stored by a database.
 
     Args:
         config_file_path: Path to the JSON file containing limiter settings.
@@ -37,48 +35,56 @@ class RateLimiter:
     Attributes:
         config_file_path: Path to the JSON configuration file.
         config: Loaded configuration, including the limits and their usage state.
-        lock: Async lock protecting concurrent rate-limit state updates.
-        config_backup_interval: Seconds between periodic configuration saves.
-        _save_task: Background task for periodic saves, or ``None`` if it has
-            not been started.
-        monthly_limit: Whether monthly rate limiting is enabled. Enforcement
-            is not implemented yet.
-        daily_limit: Whether daily rate limiting is enabled.
-        secondly_limit: Whether per-second rate limiting is enabled.
-        time_zone: Time zone parsed from the daily limit's ``reset_time``.
-        last_call_time: Timestamp used to calculate per-second request spacing
-            or token replenishment.
-        lps_capacity: Configured per-second request capacity.
-        lps_strict_mode: Whether per-second limiting uses strict spacing rather
-            than the loose token-bucket mode.
-        lps_counter: Current token count used by loose per-second limiting.
-        lsp_interval: Minimum interval between requests in strict mode and the
+        lock: Resource lock.
+        config_backup_interval: Seconds between routine config backups(saves).
+        _save_task: Background task for periodic saves or None if not started
+        enable_monthly_limit: Monthly rate limit enabled flag. (Not implemented)
+        enable_daily_limit: Daily rate limit enabled flag.
+        enable_psl: per-second limit (psl) enabled flag.
+        time_zone: Time zone parsed from the daily limit's reset_time.
+        last_call_time: Timestamp for calculating per-second request spacing
+        psl_capacity: Total psl capacity.
+        psl_strict_mode: Whether psl uses strict limiter (will not exceed the limit)
+            or loose token-bucket mode (Can exceed hard limit if traffic is dense).
+        psl_counter: Current request count used by loose psl.
+        psl_interval: Minimum interval between requests in strict mode and the
             retry interval in loose mode, in seconds.
     """
 
     def __init__(self, config_file_path: str):
-        self.lock = asyncio.Lock() # Resource lock for async operations
+        self.lock: asyncio.Lock = asyncio.Lock()  # Resource lock for async operations
 
-        self.config_file_path = config_file_path
-        self.config = self._load_config(config_file_path)
+        self.config_file_path: Path = Path(config_file_path + ".json")
+        self.config: dict = self._load_config(config_file_path)
         self.validate_config()
 
-        self.config_backup_interval = 300  # seconds
-        self._save_task = None
+        self.config_backup_interval: float = 300.0  # seconds
+        self._save_task: asyncio.Task | None = None
 
-        self.monthly_limit = self.config["limit_per_month"]["enabled"] if "limit_per_month" in config else False
-        self.daily_limit = self.config["limit_per_day"]["enabled"] if "limit_per_day" in config else False
-        self.secondly_limit = self.config["limit_per_second"]["enabled"] if "limit_per_second" in config else False
-        dt = datetime.fromisoformat(config["limit_per_day"]["reset_time"])
-        self.time_zone=dt.tzinfo
-        
-        
-        self.last_call_time = 0.0
-        self.lps_capacity = self.config["limit_per_second"]["max_requests"]
-        self.lps_strict_mode = self.config["limit_per_second"]["mode"] == "strict"
-        self.lps_counter = self.lps_capacity
+        self.enable_monthly_limit: bool = (
+            self.config["limit_per_month"]["enabled"]
+            if "limit_per_month" in self.config
+            else False
+        )
+        self.enable_daily_limit: bool = (
+            self.config["limit_per_day"]["enabled"]
+            if "limit_per_day" in self.config
+            else False
+        )
+        self.enable_psl: bool = (
+            self.config["limit_per_second"]["enabled"]
+            if "limit_per_second" in self.config
+            else False
+        )
+        dt = dt_time.fromisoformat(self.config["limit_per_day"]["reset_time"])
+        self.time_zone: timezone = dt.tzinfo
 
-        self.lsp_interval = 1 / self.lps_capacity
+        self.last_call_time: float = 0.0
+        self.psl_capacity: int = self.config["limit_per_second"]["max_requests"]
+        self.psl_strict_mode: bool = self.config["limit_per_second"]["mode"] == "strict"
+        self.psl_counter: bool = self.psl_capacity
+
+        self.psl_interval: float = 1 / self.psl_capacity
 
     @classmethod
     def generate_default_config(cls, config_file_path: str):
@@ -112,20 +118,26 @@ class RateLimiter:
         with self.lock():
             with open(config_file, "r", encoding="utf-8") as f:
                 return json.load(f)
-    
+
     def validate_config(self):
+        """Validate configurations
+        Raises: RateLimiterError Exception
+        """
         with self.lock():
             if self.config["limit_per_day"]["max_requests"] <= 0:
                 raise RateLimiterError("Max requests per day must be greater than 0.")
             if self.config["limit_per_second"]["max_requests"] <= 0:
-                raise RateLimiterError("Max requests per second must be greater than 0.")
+                raise RateLimiterError(
+                    "Max requests per second must be greater than 0."
+                )
             if self.config["limit_per_second"]["mode"] not in ["strict", "loose"]:
                 raise RateLimiterError("Mode must be either 'strict' or 'loose'.")
 
     async def check_monthly_limit(self):
         raise NotImplementedError("Monthly rate limiting is not implemented yet.")
-    
+
     async def check_daily_limit(self):
+        
         async with self.lock:
             today = datetime.now(tz=self.time_zone).strftime("%Y-%m-%d")
             # Check if the current day has changed and reset the daily quota
@@ -134,7 +146,10 @@ class RateLimiter:
                 self.config["limit_per_day"]["current_day"] = today
                 self.config["limit_per_day"]["soft_retry"] = False
 
-            if self.config["limit_per_day"]["current_quota"] >= self.config["limit_per_day"]["max_requests"]:
+            if (
+                self.config["limit_per_day"]["current_quota"]
+                >= self.config["limit_per_day"]["max_requests"]
+            ):
                 raise RateLimiterDailyQuotaExceeded("Daily quota exceeded for the API.")
 
             self.config["limit_per_day"]["current_quota"] += 1
@@ -160,47 +175,48 @@ class RateLimiter:
         """
         await self.routine_config_backup()
 
-        if self.monthly_limit:
+        if self.enable_monthly_limit:
             await self.check_monthly_limit()
-        if self.daily_limit:
+        if self.enable_daily_limit:
             await self.check_daily_limit()
-        if self.secondly_limit:
-            await self.check_lps()
+        if self.enable_psl:
+            await self.check_psl()
 
-
-    
-    async def check_lps(self, timeout:float=5.0):
-        if self.lps_strict_mode:
-            await self._check_lps_strict()
+    async def check_psl(self, timeout: float = 5.0):
+        if self.psl_strict_mode:
+            await self._check_psl_strict()
         else:
             start_time = time.time()
             while True:
-                if await self._check_lps_loose():
+                if await self._check_psl_loose():
                     return
                 if time.time() - start_time > timeout:
-                    raise RateLimiterError("Rate limiter timeout while waiting for LPS.")
-                await asyncio.sleep(self.lsp_interval)  # This can be set to a smaller value for more frequent checks
-    
-    async def _check_lps_loose(self):
+                    raise RateLimiterError(
+                        "Rate limiter timeout while waiting for psl."
+                    )
+                await asyncio.sleep(
+                    self.psl_interval
+                )  # This can be set to a smaller value for more frequent checks
+
+    async def _check_psl_loose(self):
         async with self.lock:
             now = time.time()
             dt = now - self.last_call_time
-            self.lps_counter = min(
-                self.lps_capacity, 
-                self.lps_counter + dt * self.lps_capacity
+            self.psl_counter = min(
+                self.psl_capacity, self.psl_counter + dt * self.psl_capacity
             )
-            if self.lps_counter < 1:
+            if self.psl_counter < 1:
                 return False
             else:
-                self.lps_counter -= 1
+                self.psl_counter -= 1
                 self.last_call_time = now
                 return True
 
-    async def _check_lps_strict(self):
+    async def _check_psl_strict(self):
         async with self.lock:
             now = time.time()
             dt = now - self.last_call_time
-            wait_time = max(0, self.lsp_interval - dt)
+            wait_time = max(0, self.psl_interval - dt)
             self.last_call_time = now + wait_time
 
         if wait_time > 0:

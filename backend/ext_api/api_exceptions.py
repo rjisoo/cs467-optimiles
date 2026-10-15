@@ -5,6 +5,7 @@ class APIRouterError(Exception):
     a request cannot be sent, or an unexpected request error occurs.
     """
 
+
 class APIStatusError(Exception):
     """Raised when an external API returns a non-success HTTP status code.
 
@@ -58,16 +59,18 @@ class APIStatusError(Exception):
 class APITimeout(Exception):
     """Raised when an outbound request exceeds the configured timeout."""
 
+
 class APIQuotaExceeded(Exception):
     """Raised when an external API returns a quota exceeded error."""
-    
+
+
 class RateLimiterError(Exception):
     """Raised when the rate limiter encounters an error."""
+
 
 class RateLimiterDailyQuotaExceeded(RateLimiterError):
     """Raised when an external API returns a daily quota exceeded error."""
 
+
 class RateLimiterMonthlyQuotaExceeded(RateLimiterError):
     """Raised when an external API returns a monthly quota exceeded error."""
-
-

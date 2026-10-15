@@ -2,10 +2,12 @@ import logging
 from .api_exceptions import APIRouterError, APIStatusError, APITimeout
 import httpx
 import time
+from .api_ratelimiter import RateLimiter
 
 # Set current module name for logging
 logger = logging.getLogger(__name__)
-    
+
+
 class APIRouterTemplate:
     """Async HTTP template for external API clients.
 
@@ -52,6 +54,7 @@ class APIRouterTemplate:
         self.client_id = client_id
         self.client_secret = client_secret
         self.oauth = oauth
+        self.rate_limiter = RateLimiter(base_url)
         if not self.oauth:
             self._auth()
 
@@ -143,6 +146,7 @@ class APIRouterTemplate:
         payload: dict | None = None,
         params: dict | None = None,
         headers_override: dict | None = None,
+        bypass_rate_limiter: bool = False,
     ) -> dict:
         """Send an HTTP request.
 
@@ -151,7 +155,7 @@ class APIRouterTemplate:
             endpoint (str): API route to request.
             payload (dict | None): Request payload to send with the API call.
             params (dict | None): Query parameters to include in the request.
-            headers_override (dict | None): Request headers to override, 
+            headers_override (dict | None): Request headers to override,
                 an overide ignores the default headers completely.
 
         Returns:
@@ -173,7 +177,9 @@ class APIRouterTemplate:
             self.sync_default_header_with_httpx_client()
 
         try:
-            logging.debug("Sending %s request to %s", method, self.base_url+endpoint)
+            logging.debug("Sending %s request to %s", method, self.base_url + endpoint)
+            if not bypass_rate_limiter:
+                await self.rate_limiter.request()
             start_time = time.perf_counter()
             response = await self.client.request(
                 method,
@@ -184,7 +190,12 @@ class APIRouterTemplate:
             response.raise_for_status()
             end_time = time.perf_counter()
             duration_ms = (end_time - start_time) * 1000
-            logging.debug("%s %s completed in %.2f ms", method, self.base_url+endpoint, duration_ms)
+            logging.debug(
+                "%s %s completed in %.2f ms",
+                method,
+                self.base_url + endpoint,
+                duration_ms,
+            )
 
             return response.json()
 
@@ -214,6 +225,7 @@ class APIRouterTemplate:
         endpoint: str,
         payload: dict | None = None,
         params: dict | None = None,
+        bypass_rate_limiter: bool = False,
     ):
         """Send an HTTP GET request to the provided endpoint.
 
@@ -231,13 +243,16 @@ class APIRouterTemplate:
             APIStatusError: If the API responds with a non-2xx HTTP status.
             APITimeout: If the request exceeds the configured timeout.
         """
-        return await self._request("GET", endpoint, payload, params)
+        return await self._request(
+            "GET", endpoint, payload, params, bypass_rate_limiter=bypass_rate_limiter
+        )
 
     async def post(
         self,
         endpoint: str,
         payload: dict | None = None,
         params: dict | None = None,
+        bypass_rate_limiter: bool = False,
     ):
         """Send an HTTP POST request to the provided endpoint.
 
@@ -255,13 +270,16 @@ class APIRouterTemplate:
             APIStatusError: If the API responds with a non-2xx HTTP status.
             APITimeout: If the request exceeds the configured timeout.
         """
-        return await self._request("POST", endpoint, payload, params)
+        return await self._request(
+            "POST", endpoint, payload, params, bypass_rate_limiter=bypass_rate_limiter
+        )
 
     async def put(
         self,
         endpoint: str,
         payload: dict | None = None,
         params: dict | None = None,
+        bypass_rate_limiter: bool = False,
     ):
         """Send an HTTP PUT request to the provided endpoint.
 
@@ -279,6 +297,6 @@ class APIRouterTemplate:
             APIStatusError: If the API responds with a non-2xx HTTP status.
             APITimeout: If the request exceeds the configured timeout.
         """
-        return await self._request("PUT", endpoint, payload, params)
-
-
+        return await self._request(
+            "PUT", endpoint, payload, params, bypass_rate_limiter=bypass_rate_limiter
+        )
