@@ -3,7 +3,7 @@ from .api_exceptions import APIRouterError, APIStatusError, APITimeout
 import httpx
 import time
 from .api_ratelimiter import RateLimiter
-
+from pathlib import Path
 # Set current module name for logging
 logger = logging.getLogger(__name__)
 
@@ -24,9 +24,11 @@ class APIRouterTemplate:
         client_secret (str | None): Optional client secret for auth flows.
         oauth (bool): Whether auth should be applied before requests.
     """
-
+    rate_limiter_config_dir="config/rate_limiter/"
+    rate_limiter_config_ext=".json"
     def __init__(
         self,
+        api_name:str,
         base_url: str,
         headers: dict | None = None,
         timeout: float = 10.0,
@@ -47,6 +49,7 @@ class APIRouterTemplate:
         Raises:
             None: The constructor itself does not raise errors.
         """
+        self.api_name = api_name
         self.base_url = base_url
         self.default_headers = headers.copy() if headers else {}
         self.timeout = timeout
@@ -54,7 +57,11 @@ class APIRouterTemplate:
         self.client_id = client_id
         self.client_secret = client_secret
         self.oauth = oauth
-        self.rate_limiter = RateLimiter(base_url)
+
+        rate_limiter_config_path=Path(self.rate_limiter_config_dir, self.api_name+self.rate_limiter_config_ext)
+        rate_limiter_config_path.parent.mkdir(parents=True, exist_ok=True)
+        self.rate_limiter = RateLimiter(rate_limiter_config_path)
+
         if not self.oauth:
             self._auth()
 
