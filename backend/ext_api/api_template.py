@@ -5,8 +5,7 @@ import time
 
 # Set current module name for logging
 logger = logging.getLogger(__name__)
-
-
+    
 class APIRouterTemplate:
     """Async HTTP template for external API clients.
 
@@ -281,3 +280,5 @@ class APIRouterTemplate:
             APITimeout: If the request exceeds the configured timeout.
         """
         return await self._request("PUT", endpoint, payload, params)
+
+
