@@ -1,5 +1,5 @@
 import asyncio
-
+from backend.ext_api.api_ratelimiter import RateLimiter
 import httpx
 import pytest
 
@@ -33,7 +33,7 @@ def _make_async_client(handler):
 
 
 def test_context_manager_initializes_client_and_syncs_headers():
-    api = DummyAPI("https://example.com", headers={"X-Test": "one"}, timeout=1.0)
+    api = DummyAPI("test site","https://example.com", headers={"X-Test": "one"}, timeout=1.0)
 
     async def _run():
         async with api:
@@ -48,6 +48,7 @@ def test_context_manager_initializes_client_and_syncs_headers():
 
 def test_sync_default_headers_updates_live_client():
     api = DummyAPI(
+        "test site",
         "https://example.com",
         headers={"Accept": "application/json"},
         timeout=1.0,
@@ -63,7 +64,7 @@ def test_sync_default_headers_updates_live_client():
 
 
 def test_request_without_client_raises_api_router_error():
-    api = DummyAPI("https://example.com", timeout=1.0)
+    api = DummyAPI("test site","https://example.com", timeout=1.0)
 
     async def _run():
         with pytest.raises(APIRouterError):
@@ -74,6 +75,7 @@ def test_request_without_client_raises_api_router_error():
 
 def test_oauth_auth_runs_before_request_and_header_override_is_used():
     api = OAuthAPI(
+        "test site",
         "https://example.com",
         headers={"X-Trace": "base"},
         timeout=1.0,
@@ -102,7 +104,7 @@ def test_oauth_auth_runs_before_request_and_header_override_is_used():
 
 
 def test_http_status_error_is_wrapped_in_api_status_error():
-    api = DummyAPI("https://example.com", timeout=1.0)
+    api = DummyAPI("test site","https://example.com", timeout=1.0)
 
     async def handler(request):
         return httpx.Response(500, json={"error": "bad"}, request=request)
@@ -121,7 +123,7 @@ def test_http_status_error_is_wrapped_in_api_status_error():
 
 
 def test_timeout_error_raises_api_timeout():
-    api = DummyAPI("https://example.com", timeout=0.1)
+    api = DummyAPI("test site","https://example.com", timeout=0.1)
 
     async def handler(request):
         raise httpx.ReadTimeout("timed out")
@@ -136,7 +138,7 @@ def test_timeout_error_raises_api_timeout():
 
 
 def test_request_error_raises_api_router_error():
-    api = DummyAPI("https://example.com", timeout=1.0)
+    api = DummyAPI("test site","https://example.com", timeout=1.0)
 
     async def handler(request):
         raise httpx.ConnectError("connection failed")
@@ -148,3 +150,22 @@ def test_request_error_raises_api_router_error():
                 await api._request("GET", "/fail")
 
     asyncio.run(_run())
+
+import os
+from pathlib import Path
+import json
+import time
+
+def test_rate_limiter_config_generator():
+    print(f"curr_cwd={os.getcwd()}")
+    fpath=Path("tests/config/gentest.json")
+    fpath.parent.mkdir(parents=True,exist_ok=True)
+
+    RateLimiter.generate_default_config(fpath)
+
+    assert fpath.is_file()
+    with open(fpath,"r",encoding="utf-8") as f:
+        assert json.load(f)==RateLimiter.default_config
+
+def rate_limit_strict_tests():
+    pass
