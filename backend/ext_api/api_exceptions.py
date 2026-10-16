@@ -67,6 +67,8 @@ class APIQuotaExceeded(Exception):
 class RateLimiterError(Exception):
     """Raised when the rate limiter encounters an error."""
 
+class RateLimiterTimeout(RateLimiterError):
+    """Raised when Ratelimiter wait times out."""
 
 class RateLimiterDailyQuotaExceeded(RateLimiterError):
     """Raised when an external API returns a daily quota exceeded error."""
