@@ -1,121 +1,88 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
+import { useEffect, useRef, useState } from 'react'
 import './App.css'
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const menuButtonRef = useRef<HTMLButtonElement>(null)
+  const navigationRef = useRef<HTMLElement>(null)
+  const newTripButtonRef = useRef<HTMLButtonElement>(null)
+  const entryHeadingRef = useRef<HTMLHeadingElement>(null)
+
+  useEffect(() => {
+    // Keep this breakpoint aligned with the shell's CSS media query.
+    const mobileViewport = window.matchMedia('(max-width: 48rem)')
+
+    function handleViewportChange(event: MediaQueryListEvent) {
+      setIsMenuOpen(false)
+      if (event.matches && navigationRef.current?.contains(document.activeElement)) {
+        menuButtonRef.current?.focus()
+      } else if (!event.matches && document.activeElement === menuButtonRef.current) {
+        newTripButtonRef.current?.focus()
+      }
+    }
+
+    mobileViewport.addEventListener('change', handleViewportChange)
+    return () => mobileViewport.removeEventListener('change', handleViewportChange)
+  }, [])
+
+  function startNewTrip() {
+    setIsMenuOpen(false)
+    entryHeadingRef.current?.focus()
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
+    <div
+      className="app-shell"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && isMenuOpen) {
+          setIsMenuOpen(false)
+          menuButtonRef.current?.focus()
+        }
+      }}
+    >
+      <a className="skip-link" href="#trip-entry">Skip to trip</a>
+      <header className="brand-bar">
+        <span className="brand">OptiMiles</span>
         <button
+          className="menu-toggle"
           type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
+          ref={menuButtonRef}
+          aria-expanded={isMenuOpen}
+          aria-controls="app-navigation"
+          onClick={() => setIsMenuOpen(!isMenuOpen)}
         >
-          Count is {count}
+          {isMenuOpen ? 'Close menu' : 'Menu'}
         </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+      </header>
+      <aside
+        className="sidebar"
+        id="app-navigation"
+        ref={navigationRef}
+        data-open={isMenuOpen}
+      >
+        <nav aria-label="Main navigation">
+          <button className="new-trip" type="button" ref={newTripButtonRef} onClick={startNewTrip}>
+            New trip
+          </button>
+          <button className="nav-item" type="button" disabled>
+            Recent chats <span>Not available yet</span>
+          </button>
+          <button className="nav-item" type="button" disabled>
+            Settings <span>Not available yet</span>
+          </button>
+          <button className="nav-item" type="button" disabled>
+            Help <span>Not available yet</span>
+          </button>
+        </nav>
+      </aside>
+      <main className="workspace">
+        <section className="entry-panel" aria-labelledby="trip-entry">
+          <p className="eyebrow">New trip</p>
+          <h1 id="trip-entry" ref={entryHeadingRef} tabIndex={-1}>OptiMiles</h1>
+          <p>Placeholder. Search is not available yet.</p>
+        </section>
+      </main>
+    </div>
   )
 }
 
