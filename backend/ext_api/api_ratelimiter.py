@@ -43,6 +43,8 @@ class RateLimiter:
         api quota information and current remaining quota information (Only for Daily quota)
     Structure:
         name: api name
+        settings: rate limiter settings
+            backup_interval: the interval between periodic backups
         limit_per_month: Monthly rate limit configuration
             "enabled": whether this rate limit is enabled
         limit_per_day: Daily rate limit configuration
@@ -75,6 +77,9 @@ class RateLimiter:
 
     default_config = {
         "name": "api.example.com",
+        "settings":{
+            "backup_interval": 30,
+        },
         "limit_per_month": {
             "enabled": False,
             "max_requests": 10000,
@@ -113,7 +118,7 @@ class RateLimiter:
         self.config: dict = self._load_config(config_file_path)
         self.validate_config()
 
-        self.config_backup_interval: float = 30.0  # seconds
+        self.config_backup_interval: float = self.config["settings"]["backup_interval"]
         # This defaults to None for io safety. Routine starts when the first request is made
         self._save_task: asyncio.Task | None = None
 
@@ -247,6 +252,7 @@ class RateLimiter:
             await self.save_config()
 
     async def record_usage(self, token: int = 1):
+        """Record token usage"""
         today = datetime.now(tz=self.time_zone).strftime("%Y-%m-%d")
         async with self.lock:
             if today not in self.config["usage"]:
