@@ -93,7 +93,7 @@ class APIRouterTemplate:
             self.client = await self.create_httpx_client()
 
     async def __aenter__(self):
-        self.client = await self.create_httpx_client
+        self.client = await self.create_httpx_client()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
