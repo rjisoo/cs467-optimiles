@@ -55,20 +55,20 @@ Award search returns fake data for now.
 This module manages external API requests and provide configurable quota tracking and limiting
 
 ### api_template submodule
-This class creates and manages an httpx.AsyncClient for outbound calls, manages default headers and automatically attaches to the live client when submitting a request, and provides a small request wrapper for GET, POST, and PUT methods. This module supports context manager for safe termination as the rate limiter class
+This class creates and manages an httpx.AsyncClient for outbound calls, manages default headers and automatically attaches to the live client when submitting a request, and provides a small request wrapper for GET, POST, and PUT methods. This module supports context manager for safe termination.
 
 ### api_ratelimiter submodule
-This module manage API quotas and track usage. This module is managed by api_template by default, therefore no implementation of this module needed. 
+This module manage API quotas and track usage. This module is managed by api_template by default, therefore no implementation of this module is needed. 
 
 ### Integration
 #### Setting Up Authentication
-Adopting the api_template requires overriding several methods.
-- `_auth` (Basic Auth): This method should make sure that default_headers has the correct credentials. This only gets called once in the constructor.
-- `_async_auth` (OAuth): This method should fetch and set bearer token to the default_headers. This gets called everytime `_request` is called.
-- `_fetch_token` (OAuth): This is a optional wrapper method to fetch bearer tokens.
+Adopting the api_template requires overriding one or two authentication methods.
+- `_auth` (Basic Auth): This method should make sure that default_headers has the correct credentials, it only gets called once in the constructor.
+- `_async_auth` (OAuth): This method should fetch and set bearer token to the default_headers, it gets called everytime `_request` is called.
+- `_fetch_token` (OAuth): This is a optional wrapper method to fetch bearer tokens to be used in `_async_auth`.
 #### Configuring Rate Limiter
-Each sub-class should be given a name with characters allowed for a system file, as it is used to identify rate limiter configuration files. The configurations are currently stored as json files that lives in the `./config/rate_limiter/` directory by default. The default configurations directory and file extension can be overriden in the class variables `rate_limiter_config_dir` for directory & `rate_limiter_config_ext` for file extention.
-To accuire a template file for setting up a new API, you can use the `generate_default_config` class method to generate a template file, or if the rate limiter fails to find a suitable file, it throws a FileNotFoundError and creates a template using the api name it was received.
+Each sub-class should be given a name with legal characters for a file, as it is used to identify rate limiter configuration files. The configurations are currently stored as json files in the `./config/rate_limiter/` directory by default. The default configurations directory and file extension can be overriden in the class variables `rate_limiter_config_dir` for directory & `rate_limiter_config_ext` for file extention.
+To accuire a template configuration file for setting up a new API, you can use the `generate_default_config` class method to generate a template file, or if the rate limiter fails to find a suitable file, it throws a FileNotFoundError and creates a template using the api name it was received.
 
 #### Example:
 Here is an example of implementing an API with basic auth.
@@ -121,5 +121,6 @@ from ext_api.example_api import ExampleAPI
 
 example_api = ExampleAPI("exampleapi", "example.com/api/")
 results = asyncio.run(example_api.get("/some_endpoint"))
+asyncio.run(example_api.close())
 ```
 
