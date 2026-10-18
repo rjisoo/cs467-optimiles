@@ -14,17 +14,10 @@ logger = logging.getLogger(__name__)
 
 
 class RateLimiter:
-    """Enforce configured API request limits and persist limiter state.
+    """A rate limiter for enforcing configured API request limits and persist limiter state.
+    This class is implemented as a child class to APIRouterTemplate and helps to manage API quotas and track usage.
 
-    Call request method before submitting an API request which does daily
-        and per-second limit checks.
-    Daily quota exhaustion will raises RateLimiterDailyQuotaExceeded Exception when exceeded,
-        and waiting too long for a loose per-second token raises RateLimiterError.
-    Monthly limit management is not implemented.
-    Configuration AKA self.config is loaded from a JSON file.
-        Use the class method generate_default_config to create a configuration file
-    Currently config state persistance uses json format as a temporary storage measure,
-        A database may be more appropriate.
+
 
     Args:
         config_file_path: Path to the JSON file containing limiter settings.
@@ -67,6 +60,17 @@ class RateLimiter:
                     Loose mode: Use token bucket to regulate requests, which may exceed PSL rule temporarily during heavy traffic,
                     however long-term request frequency should average equal or below the PSL limit
         usage: tracks the daily usage of this api, the subsidiery structure is a dictionary consists of "YYYY-MM-DD": {Daily Usage in tokens}
+
+    Notes:
+        Call request method before submitting an API request which does daily
+            and per-second limit checks.
+        Daily quota exhaustion will raises RateLimiterDailyQuotaExceeded Exception when exceeded,
+            and waiting too long for a loose per-second token raises RateLimiterError.
+        Monthly limit management is not implemented.
+        Configuration AKA self.config is loaded from a JSON file.
+            Use the class method generate_default_config to create a configuration file
+        Currently config state persistance uses json format as a temporary storage measure,
+            A database may be more appropriate.
     """
 
     default_config = {
@@ -109,7 +113,7 @@ class RateLimiter:
         self.config: dict = self._load_config(config_file_path)
         self.validate_config()
 
-        self.config_backup_interval: float = 300.0  # seconds
+        self.config_backup_interval: float = 30.0  # seconds
         # This defaults to None for io safety. Routine starts when the first request is made
         self._save_task: asyncio.Task | None = None
 
@@ -128,7 +132,7 @@ class RateLimiter:
         self.psl_interval: float = 1 / self.psl_capacity
 
     @classmethod
-    def generate_default_config(cls, config_file_path: str) -> None:
+    def generate_default_config(cls, config_file_path: Path) -> None:
         """Generate a default configuration file for the rate limiter.
 
         Args:
