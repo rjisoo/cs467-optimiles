@@ -77,6 +77,9 @@ Here is an example of implementing an API with basic auth.
 ```json
 {
     "name": "exampleapi",
+    "settings":{
+        "backup_interval": 30,
+    },
     "limit_per_month": {
         "enabled": false,
         "max_requests": 10000,
