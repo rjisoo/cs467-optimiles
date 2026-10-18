@@ -4,6 +4,7 @@ import httpx
 import time
 from .api_ratelimiter import RateLimiter
 from pathlib import Path
+
 # Set current module name for logging
 logger = logging.getLogger(__name__)
 
@@ -24,11 +25,13 @@ class APIRouterTemplate:
         client_secret (str | None): Optional client secret for auth flows.
         oauth (bool): Whether auth should be applied before requests.
     """
-    rate_limiter_config_dir="config/rate_limiter/"
-    rate_limiter_config_ext=".json"
+
+    rate_limiter_config_dir = "config/rate_limiter/"
+    rate_limiter_config_ext = ".json"
+
     def __init__(
         self,
-        api_name:str,
+        api_name: str,
         base_url: str,
         headers: dict | None = None,
         timeout: float = 10.0,
@@ -58,7 +61,9 @@ class APIRouterTemplate:
         self.client_secret = client_secret
         self.oauth = oauth
 
-        rate_limiter_config_path=Path(self.rate_limiter_config_dir, self.api_name+self.rate_limiter_config_ext)
+        rate_limiter_config_path = Path(
+            self.rate_limiter_config_dir, self.api_name + self.rate_limiter_config_ext
+        )
         rate_limiter_config_path.parent.mkdir(parents=True, exist_ok=True)
         self.rate_limiter = RateLimiter(rate_limiter_config_path)
 
