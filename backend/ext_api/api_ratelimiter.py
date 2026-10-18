@@ -6,6 +6,8 @@ import json
 from .api_exceptions import RateLimiterDailyQuotaExceeded, RateLimiterError
 from pathlib import Path
 
+# Set current module name for logging
+logger = logging.getLogger(__name__)
 
 # Citation: The following docstrings was written with the help of Copilot.
 # This transcript backend/citations/GenAI.md entry 01 documents the GenAI interaction that led to my writing
@@ -145,6 +147,7 @@ class RateLimiter:
         async with self.lock:
             with open(self.config_file_path, "w", encoding="utf-8") as f:
                 json.dump(self.config, f, indent=4)
+            logging.debug("Configuration is saved to %s", self.config_file_path)
 
     def _load_config(self, config_file: Path) -> dict:
         """Load config from config_file path.
@@ -167,10 +170,13 @@ class RateLimiter:
             RateLimiterError Exception: If the config structure or value is invalid
         """
         if self.config["limit_per_day"]["max_requests"] <= 0:
+            logging.error("Max requests per day must be greater than 0.")
             raise RateLimiterError("Max requests per day must be greater than 0.")
         if self.config["limit_per_second"]["max_requests"] <= 0:
+            logging.error("Max requests per second must be greater than 0.")
             raise RateLimiterError("Max requests per second must be greater than 0.")
         if self.config["limit_per_second"]["mode"] not in ["strict", "loose"]:
+            logging.error("Mode must be either 'strict' or 'loose'.")
             raise RateLimiterError("Mode must be either 'strict' or 'loose'.")
         if "usage" not in self.config:
             self.config["usage"] = {}
@@ -203,6 +209,7 @@ class RateLimiter:
                 self.config["limit_per_day"]["current_quota"]
                 >= self.config["limit_per_day"]["max_requests"]
             ):
+                logging.error("Daily quota exceeded for the API.")
                 raise RateLimiterDailyQuotaExceeded("Daily quota exceeded for the API.")
 
             self.config["limit_per_day"]["current_quota"] += 1
@@ -231,6 +238,7 @@ class RateLimiter:
             if today not in self.config["usage"]:
                 self.config["usage"][today] = 0
             self.config["usage"][today] += token
+            logging.debug("%s usage recorded: %d tokens", self.config_file_path, token)
 
     async def request(self) -> None:
         """Attempt to acquire the lock and check configured rate limits.
@@ -240,13 +248,18 @@ class RateLimiter:
             RateLimiterError: If the rate limiter encounters an timeout.
         """
         await self.routine_config_backup()
-
+        logging.debug("Rate limit request received:")
         if self.enable_monthly_limit:
             await self.check_monthly_limit()
+            logging.debug("Monthly limit checked")
         if self.enable_daily_limit:
+            logging.debug("Daily limit started")
             await self.check_daily_limit()
+            logging.debug("Daily limit checked")
         if self.enable_psl:
+            logging.debug("PSL started")
             await self.wait_psl()
+            logging.debug("PSL checked")
 
     async def wait_psl(self, timeout: float = 5.0) -> None:
         """Wait until a per-second request is available.
@@ -263,13 +276,18 @@ class RateLimiter:
                 timeout expires.
         """
         if self.psl_strict_mode:
+            logging.debug("Using strict mode")
             await self._wait_psl_strict()
         else:
             start_time = time.time()
+            logging.debug("Using loose mode (Timestamp: %f)", start_time)
             while True:
                 if await self._check_psl_loose():
                     return
-                if time.time() - start_time > timeout:
+                current_time = time.time()
+                logging.debug("Waiting for available token (Timestamp: %f)", current_time)
+                if current_time - start_time > timeout:
+                    logging.error("Rate limiter timeout while waiting for psl.")
                     raise RateLimiterError(
                         "Rate limiter timeout while waiting for psl."
                     )
@@ -292,6 +310,7 @@ class RateLimiter:
             self.psl_counter = min(
                 self.psl_capacity, self.psl_counter + dt * self.psl_capacity
             )
+            logging.debug("Available token = %d (Timestamp: %f)", self.psl_counter, now)
             self.last_call_time = now
             if self.psl_counter < 1:
                 return False
@@ -310,4 +329,5 @@ class RateLimiter:
             self.last_call_time = now + wait_time
 
         if wait_time > 0:
+            logging.debug("Waiting %f for the next available API (Timestamp: %f)", wait_time, now)
             await asyncio.sleep(wait_time)
