@@ -7,17 +7,22 @@ from .api_exceptions import RateLimiterDailyQuotaExceeded, RateLimiterError
 from pathlib import Path
 
 
+# Citation: The following docstrings was written with the help of Copilot.
+# This transcript backend/citations/GenAI.md entry 01 documents the GenAI interaction that led to my writing
 
 
 class RateLimiter:
     """Enforce configured API request limits and persist limiter state.
 
-    Call request method before submitting an API request which does daily and per-second limit checks.
-    Daily quota exhaustion will raises RateLimiterDailyQuotaExceeded Exception when exceeded, and waiting too long for a loose per-second token raises RateLimiterError.
-    Monthly limit management is not implemented because different api services might have different scheduling.
-
-    Configuration AKA self.config is loaded from a JSON file. Use the class method generate_default_config to create a configuration file
-    Currently config state persistance uses json format as a temporary storage measure; a database may be more appropriate.
+    Call request method before submitting an API request which does daily
+        and per-second limit checks.
+    Daily quota exhaustion will raises RateLimiterDailyQuotaExceeded Exception when exceeded,
+        and waiting too long for a loose per-second token raises RateLimiterError.
+    Monthly limit management is not implemented.
+    Configuration AKA self.config is loaded from a JSON file.
+        Use the class method generate_default_config to create a configuration file
+    Currently config state persistance uses json format as a temporary storage measure,
+        A database may be more appropriate.
 
     Args:
         config_file_path: Path to the JSON file containing limiter settings.
@@ -37,46 +42,77 @@ class RateLimiter:
         psl_strict_mode: Whether per-second limiting uses strict interval. (See _wait_psl_strict)
         psl_counter: Available token count for loose per-second limiting.
         psl_interval: Per-second limiter interval, in seconds.
+
+    Class variables
+    default_config is a template configuration file that contains:
+        api quota information and current remaining quota information (Only for Daily quota)
+    Structure:
+        name: api name
+        limit_per_month: Monthly rate limit configuration
+            "enabled": whether this rate limit is enabled
+        limit_per_day: Daily rate limit configuration
+            "enabled": whether this rate limit is enabled
+            max_requests: Maximum requests allowed in a day
+            current_quota: Current day usage
+            current_day: The last day this api was managed
+            reset_time: reset time of the daily quota
+            soft_entry: If the rate limiter would permit tries after the quota is exceeded
+        limit_per_second: Per-second rate limiting
+            "enabled": whether this rate limit is enabled
+            max_requests: the maximum requests allowed in a second
+            mode: Uses strict or loose mode
+                    Strict Mode: evenly space requests in a second, garenteed PSL enforcement
+                    Loose mode: Use token bucket to regulate requests, which may exceed PSL rule temporarily during heavy traffic,
+                    however long-term request frequency should average equal or below the PSL limit
+        usage: tracks the daily usage of this api, the subsidiery structure is a dictionary consists of "YYYY-MM-DD": {Daily Usage in tokens}
     """
 
-    # Class variables
     default_config = {
-    "url": "api.example.com",
-    "Usage": {},
-    "limit_per_month": {"enabled": False, "max_requests": 10000, "current_quota": 0},
-    "limit_per_day": {
-        "enabled": False,
-        "max_requests": 1000,
-        "current_quota": 0,
-        "current_day": "1970-01-01",
-        "reset_time": "21:35:00+00:00",  # Reset time
-        "soft_retry": False,  # flag for trying again after the quota is exceeded (Not yet implemented)
-    },
-    "limit_per_second": {"enabled": False, "max_requests": 10, "mode": "strict/loose"},
-}
+        "name": "api.example.com",
+        "limit_per_month": {
+            "enabled": False,
+            "max_requests": 10000,
+            "current_quota": 0,
+        },
+        "limit_per_day": {
+            "enabled": False,
+            "max_requests": 1000,
+            "current_quota": 0,
+            "current_day": "1970-01-01",
+            "reset_time": "21:35:00+00:00",  # Reset time
+            "soft_retry": False,  # flag for trying again after the quota is exceeded (Not yet implemented)
+        },
+        "limit_per_second": {
+            "enabled": False,
+            "max_requests": 10,
+            "mode": "strict/loose",
+        },
+        "usage": {},
+    }
+
     def __init__(self, config_file_path: Path):
         """Initialize the rate limiter from a JSON configuration file.
 
         Args:
-            config_file_path: Path to the JSON configuration file.
+            config_file_path: JSON configuration file Path.
 
         Raises:
-            FileNotFoundError: If the configuration file is missing. A default
-                configuration is generated before the error is re-raised.
-            RateLimiterError: If a configured request limit or per-second mode
-                is invalid.
+            FileNotFoundError: If no configuration file is found. A template
+                configuration file is generated before the error is re-raised.
+            RateLimiterError: If a configured request limit or per-second mode is invalid.
         """
         self.lock: asyncio.Lock = asyncio.Lock()  # Resource lock for async operations
-        
+
         self.config_file_path: Path = config_file_path
         self.config: dict = self._load_config(config_file_path)
         self.validate_config()
 
         self.config_backup_interval: float = 300.0  # seconds
+        # This defaults to None for io safety. Routine starts when the first request is made
         self._save_task: asyncio.Task | None = None
 
         self.enable_monthly_limit: bool = self.config["limit_per_month"]["enabled"]
-        self.enable_daily_limit: bool = self.config["limit_per_day"]["enabled"]   
+        self.enable_daily_limit: bool = self.config["limit_per_day"]["enabled"]
         self.enable_psl: bool = self.config["limit_per_second"]["enabled"]
 
         dt = dt_time.fromisoformat(self.config["limit_per_day"]["reset_time"])
@@ -101,30 +137,6 @@ class RateLimiter:
         with open(config_file_path, "w", encoding="utf-8") as f:
             json.dump(cls.default_config, f, indent=4)
 
-    async def __aenter__(self):
-        """Return this rate limiter for use in an asynchronous context manager."""
-        return self
-
-    async def __aexit__(self, exc_type, exc_value, traceback):
-        """Stop periodic backups and save the configuration when exiting.
-
-        Args:
-            exc_type: Exception type raised inside the context, if any.
-            exc_value: Exception raised inside the context, if any.
-            traceback: Traceback for the exception, if any.
-
-        Returns:
-            False, so any exception raised inside the context is not suppressed.
-        """
-        if self._save_task:
-            self._save_task.cancel()
-            try:
-                # waiting for the task to finish
-                await self._save_task
-            except asyncio.CancelledError:
-                await self.save_config()  # Ensure config is saved on exit
-        return False
-
     async def save_config(self) -> None:
         """Saves the current config to a json file
         Raises:
@@ -133,7 +145,7 @@ class RateLimiter:
         async with self.lock:
             with open(self.config_file_path, "w", encoding="utf-8") as f:
                 json.dump(self.config, f, indent=4)
-    
+
     def _load_config(self, config_file: Path) -> dict:
         """Load config from config_file path.
         args:
@@ -143,23 +155,25 @@ class RateLimiter:
             with open(config_file, "r", encoding="utf-8") as f:
                 return json.load(f)
         except FileNotFoundError:
-            logging.error("Rate limiter config file not found and generated: %s", config_file)
+            logging.error(
+                "Rate limiter config file not found and generated: %s", config_file
+            )
             self.generate_default_config(self.config_file_path)
             raise
 
     def validate_config(self) -> None:
         """Validate configurations
-        Raises: 
+        Raises:
             RateLimiterError Exception: If the config structure or value is invalid
         """
         if self.config["limit_per_day"]["max_requests"] <= 0:
             raise RateLimiterError("Max requests per day must be greater than 0.")
         if self.config["limit_per_second"]["max_requests"] <= 0:
-            raise RateLimiterError(
-                "Max requests per second must be greater than 0."
-            )
+            raise RateLimiterError("Max requests per second must be greater than 0.")
         if self.config["limit_per_second"]["mode"] not in ["strict", "loose"]:
             raise RateLimiterError("Mode must be either 'strict' or 'loose'.")
+        if "usage" not in self.config:
+            self.config["usage"] = {}
 
     async def check_monthly_limit(self) -> None:
         """limits monthly rate (Not implemnted)"""
@@ -211,6 +225,13 @@ class RateLimiter:
         except asyncio.CancelledError:
             await self.save_config()
 
+    async def record_usage(self, token: int = 1):
+        today = datetime.now(tz=self.time_zone).strftime("%Y-%m-%d")
+        async with self.lock:
+            if today not in self.config["usage"]:
+                self.config["usage"][today] = 0
+            self.config["usage"][today] += token
+
     async def request(self) -> None:
         """Attempt to acquire the lock and check configured rate limits.
         raises:
@@ -239,7 +260,7 @@ class RateLimiter:
 
         Raises:
             RateLimiterError: If loose mode does not obtain a token before the
-                timeout expires. 
+                timeout expires.
         """
         if self.psl_strict_mode:
             await self._wait_psl_strict()
@@ -253,12 +274,12 @@ class RateLimiter:
                         "Rate limiter timeout while waiting for psl."
                     )
                 # This can be set to a smaller value for more frequent checks
-                await asyncio.sleep(self.psl_interval)  
+                await asyncio.sleep(self.psl_interval)
 
     async def _check_psl_loose(self) -> bool:
         """Check if the token bucket has available token
         The token bucket replenishes tokens every 1/rate_per_second second
-        The fucntion issues all tokens available when requested. 
+        The fucntion issues all tokens available when requested.
         Short request bursts can theoritically exceed the rate limit temporarily.
         During heavy traffic, the rate of request should average at the correct per-second limit if measured on a longer time scale
 
@@ -271,11 +292,11 @@ class RateLimiter:
             self.psl_counter = min(
                 self.psl_capacity, self.psl_counter + dt * self.psl_capacity
             )
+            self.last_call_time = now
             if self.psl_counter < 1:
                 return False
             else:
                 self.psl_counter -= 1
-                self.last_call_time = now
                 return True
 
     async def _wait_psl_strict(self) -> None:
