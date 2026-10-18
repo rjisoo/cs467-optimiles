@@ -12,15 +12,12 @@ from pathlib import Path
 class RateLimiter:
     """Enforce configured API request limits and persist limiter state.
 
-    Call request method before submitting an API request which does daily and
-    per-second limit checks; 
-    daily quota exhaustion raises RateLimiterDailyQuotaExceeded Exception, 
-    and waiting too long for a loose per-second token raises :class:`RateLimiterError`.
+    Call request method before submitting an API request which does daily and per-second limit checks.
+    Daily quota exhaustion will raises RateLimiterDailyQuotaExceeded Exception when exceeded, and waiting too long for a loose per-second token raises RateLimiterError.
     Monthly limit management is not implemented because different api services might have different scheduling.
 
     Configuration AKA self.config is loaded from a JSON file. Use the class method generate_default_config to create a configuration file
-
-    config state persistance uses json format as a temporary storage measure; a database may be more appropriate.
+    Currently config state persistance uses json format as a temporary storage measure; a database may be more appropriate.
 
     Args:
         config_file_path: Path to the JSON file containing limiter settings.
@@ -58,6 +55,17 @@ class RateLimiter:
     "limit_per_second": {"enabled": False, "max_requests": 10, "mode": "strict/loose"},
 }
     def __init__(self, config_file_path: Path):
+        """Initialize the rate limiter from a JSON configuration file.
+
+        Args:
+            config_file_path: Path to the JSON configuration file.
+
+        Raises:
+            FileNotFoundError: If the configuration file is missing. A default
+                configuration is generated before the error is re-raised.
+            RateLimiterError: If a configured request limit or per-second mode
+                is invalid.
+        """
         self.lock: asyncio.Lock = asyncio.Lock()  # Resource lock for async operations
         
         self.config_file_path: Path = config_file_path
@@ -94,9 +102,20 @@ class RateLimiter:
             json.dump(cls.default_config, f, indent=4)
 
     async def __aenter__(self):
+        """Return this rate limiter for use in an asynchronous context manager."""
         return self
 
     async def __aexit__(self, exc_type, exc_value, traceback):
+        """Stop periodic backups and save the configuration when exiting.
+
+        Args:
+            exc_type: Exception type raised inside the context, if any.
+            exc_value: Exception raised inside the context, if any.
+            traceback: Traceback for the exception, if any.
+
+        Returns:
+            False, so any exception raised inside the context is not suppressed.
+        """
         if self._save_task:
             self._save_task.cancel()
             try:
