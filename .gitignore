@@ -1,5 +1,6 @@
 gentest.json
 tests\config\*
+backend/config/rate_limiter/test site.json
 
 # Created by https://www.toptal.com/developers/gitignore/api/python,windows,macos,linux,vue,react,flask
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,windows,macos,linux,vue,react,flask
@@ -363,5 +364,6 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/python,windows,macos,linux,vue,react,flask
+
 
 
