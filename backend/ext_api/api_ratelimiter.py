@@ -148,6 +148,16 @@ class RateLimiter:
             with open(self.config_file_path, "w", encoding="utf-8") as f:
                 json.dump(self.config, f, indent=4)
             logging.debug("Configuration is saved to %s", self.config_file_path)
+            
+    async def close(self) -> None:
+        """Safely terminates a rate limiter object"""
+        if self._save_task:
+            self._save_task.cancel()
+            try:
+                # waiting for the task to finish
+                await self._save_task
+            except asyncio.CancelledError:
+                await self.save_config()  # Ensure config is saved on exit
 
     def _load_config(self, config_file: Path) -> dict:
         """Load config from config_file path.
