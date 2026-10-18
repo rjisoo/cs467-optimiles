@@ -13,8 +13,8 @@ class APIRouterTemplate:
     """Async HTTP template for external API clients.
 
     This class creates and manages an httpx.AsyncClient for outbound calls,
-    keeps default headers synchronized with the live client, and provides a
-    small request wrapper for GET, POST, and PUT methods.
+    manages default headers and automatically attaches to the live client
+    when submitting a request, and provides a small request wrapper for GET, POST, and PUT methods.
 
     Attributes:
         base_url (str): Base URL used for all requests.
@@ -70,12 +70,25 @@ class APIRouterTemplate:
         if not self.oauth:
             self._auth()
 
-    async def create_httpx_client(self):
+    @classmethod
+    def generate_default_config(cls, api_name):
+        """Wrapper function to generate a default config file for Rate limiter
+        Raises:
+                    FileNotFoundError: When the directory is invalid
+        """
+
+        RateLimiter.generate_default_config(
+            Path(cls.rate_limiter_config_dir, api_name + cls.rate_limiter_config_ext)
+        )
+
+    async def create_httpx_client(self) -> httpx.AsyncClient:
+        """Returns a new Httpx Client"""
         client = httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout)
         logging.debug("Async httpx client initialized")
         return client
 
-    async def init_httpx_client(self):
+    async def init_httpx_client(self) -> None:
+        """Initialize the api client"""
         if self.client is None:
             self.client = await self.create_httpx_client()
 
@@ -95,7 +108,7 @@ class APIRouterTemplate:
             self.client = None
         await self.rate_limiter.close()
 
-    # Deprecated method. Keep httpx header clean of any authentication headers for easier header management.
+    # Deprecated! Keep httpx header clean of any authentication for easier header management.
     # def sync_default_header_with_httpx_client(self):
     #     """Sync the live HTTPX client headers with the configured default headers.
     #     This should be called whenever the default headers are changed or when an
@@ -147,9 +160,11 @@ class APIRouterTemplate:
         )
 
     async def record_usage(self, token):
+        """Record a token use"""
         await self.rate_limiter.record_usage(token)
 
     async def save_rate_limiter_config(self):
+        """Saves the current rate limiter configuration to the json file"""
         await self.rate_limiter.save_config()
 
     async def _request(
@@ -186,7 +201,7 @@ class APIRouterTemplate:
         # If OAuth is enabled or headers are overridden, perform authentication
         # Meant for Oauth requests
         if self.oauth and headers_override is None:
-            await self._auth()
+            await self._async_auth()
 
         try:
             logging.info("Sending %s request to %s", method, self.base_url + endpoint)
