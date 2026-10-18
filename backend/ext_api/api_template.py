@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class APIRouterTemplate:
     """Async HTTP template for external API clients.
 
-    This class creates and manages an ``httpx.AsyncClient`` for outbound calls,
+    This class creates and manages an httpx.AsyncClient for outbound calls,
     keeps default headers synchronized with the live client, and provides a
     small request wrapper for GET, POST, and PUT methods.
 
@@ -70,44 +70,38 @@ class APIRouterTemplate:
         if not self.oauth:
             self._auth()
 
-    async def __aenter__(self):
-        """Initialize the async HTTPX client for the context manager.
-
-        Raises:
-            httpx.HTTPError: If the HTTPX client cannot be created.
-        """
-        self.client = httpx.AsyncClient(
-            base_url=self.base_url,
-            headers=self.default_headers.copy(),
-            timeout=self.timeout,
-        )
-        self.sync_default_header_with_httpx_client()
+    async def init_httpx_client(self):
+        client = httpx.AsyncClient(
+                    base_url=self.base_url,
+                    timeout=self.timeout
+                )
         logging.debug("Async httpx client initialized")
+        return client
+
+    async def __aenter__(self):
+        self.client = await self.init_httpx_client()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Safely terminate async client when exiting.
+        """Safely terminate async client when exiting."""
+        await self.close()
+        return False
 
-        Args:
-            exc_type: Exception type causing context exit, if any.
-            exc_val: Exception value causing context exit, if any.
-            exc_tb: Exception traceback causing context exit, if any.
-
-        Raises:
-            None
-        """
+    async def close(self):
+        """Safely terminate the API client and save the latest rate limiter config file"""
         if self.client:
             await self.client.aclose()
             self.client = None
+        await self.rate_limiter.close()
 
-    def sync_default_header_with_httpx_client(self):
-        """Sync the live HTTPX client headers with the configured default headers.
-
-        This should be called whenever the default headers are changed or when an
-        auth flow updates the token values.
-        """
-        if self.client is not None:
-            self.client.headers.update(self.default_headers)
+    # Deprecated method. Keep httpx header clean of any authentication headers for easier header management.
+    # def sync_default_header_with_httpx_client(self):
+    #     """Sync the live HTTPX client headers with the configured default headers.
+    #     This should be called whenever the default headers are changed or when an
+    #     auth flow updates the token values.
+    #     """
+    #     if self.client is not None:
+    #         self.client.headers.update(self.default_headers)
 
     async def _fetch_token(
         self,
@@ -151,6 +145,9 @@ class APIRouterTemplate:
             "You forgot to implement the _auth method in this subclass."
         )
 
+    async def record_usage(self, token):
+        await self.rate_limiter.record_usage(token)
+
     async def _request(
         self,
         method: str,
@@ -184,25 +181,28 @@ class APIRouterTemplate:
 
         # If OAuth is enabled or headers are overridden, perform authentication
         # Meant for Oauth requests
-        if self.oauth or headers_override:
+        if self.oauth and headers_override is None:
             await self._auth()
-            self.sync_default_header_with_httpx_client()
 
         try:
-            logging.debug("Sending %s request to %s", method, self.base_url + endpoint)
+            logging.info("Sending %s request to %s", method, self.base_url + endpoint)
             if not bypass_rate_limiter:
                 await self.rate_limiter.request()
-            start_time = time.perf_counter()
+
+            request_header= headers_override if headers_override else self.default_headers
+            start_time = time.perf_counter() # Time this request
             response = await self.client.request(
                 method,
                 endpoint,
                 params=params,
-                headers=headers_override if headers_override else None,
+                json=payload,
+                headers=request_header,
             )
+
             response.raise_for_status()
             end_time = time.perf_counter()
             duration_ms = (end_time - start_time) * 1000
-            logging.debug(
+            logging.info(
                 "%s %s completed in %.2f ms",
                 method,
                 self.base_url + endpoint,
