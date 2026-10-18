@@ -70,16 +70,20 @@ class APIRouterTemplate:
         if not self.oauth:
             self._auth()
 
-    async def init_httpx_client(self):
+    async def create_httpx_client(self):
         client = httpx.AsyncClient(
                     base_url=self.base_url,
                     timeout=self.timeout
                 )
         logging.debug("Async httpx client initialized")
         return client
+    
+    async def init_httpx_client(self):
+        if self.client is None:
+            self.client=await self.create_httpx_client()
 
     async def __aenter__(self):
-        self.client = await self.init_httpx_client()
+        self.client = await self.create_httpx_client
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -147,6 +151,9 @@ class APIRouterTemplate:
 
     async def record_usage(self, token):
         await self.rate_limiter.record_usage(token)
+        
+    async def save_rate_limiter_config(self):
+        await self.rate_limiter.save_config()
 
     async def _request(
         self,
@@ -177,7 +184,7 @@ class APIRouterTemplate:
             APITimeout: If the request exceeds the configured timeout.
         """
         if self.client is None:
-            raise APIRouterError("Uninitialized Async HTTPX Client")
+            await self.init_httpx_client()
 
         # If OAuth is enabled or headers are overridden, perform authentication
         # Meant for Oauth requests
