@@ -148,7 +148,7 @@ class RateLimiter:
             with open(self.config_file_path, "w", encoding="utf-8") as f:
                 json.dump(self.config, f, indent=4)
             logging.debug("Configuration is saved to %s", self.config_file_path)
-            
+
     async def close(self) -> None:
         """Safely terminates a rate limiter object"""
         if self._save_task:
@@ -295,7 +295,9 @@ class RateLimiter:
                 if await self._check_psl_loose():
                     return
                 current_time = time.time()
-                logging.debug("Waiting for available token (Timestamp: %f)", current_time)
+                logging.debug(
+                    "Waiting for available token (Timestamp: %f)", current_time
+                )
                 if current_time - start_time > timeout:
                     logging.error("Rate limiter timeout while waiting for psl.")
                     raise RateLimiterError(
@@ -339,5 +341,7 @@ class RateLimiter:
             self.last_call_time = now + wait_time
 
         if wait_time > 0:
-            logging.debug("Waiting %f for the next available API (Timestamp: %f)", wait_time, now)
+            logging.debug(
+                "Waiting %f for the next available API (Timestamp: %f)", wait_time, now
+            )
             await asyncio.sleep(wait_time)

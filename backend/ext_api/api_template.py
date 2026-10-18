@@ -71,16 +71,13 @@ class APIRouterTemplate:
             self._auth()
 
     async def create_httpx_client(self):
-        client = httpx.AsyncClient(
-                    base_url=self.base_url,
-                    timeout=self.timeout
-                )
+        client = httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout)
         logging.debug("Async httpx client initialized")
         return client
-    
+
     async def init_httpx_client(self):
         if self.client is None:
-            self.client=await self.create_httpx_client()
+            self.client = await self.create_httpx_client()
 
     async def __aenter__(self):
         self.client = await self.create_httpx_client
@@ -151,7 +148,7 @@ class APIRouterTemplate:
 
     async def record_usage(self, token):
         await self.rate_limiter.record_usage(token)
-        
+
     async def save_rate_limiter_config(self):
         await self.rate_limiter.save_config()
 
@@ -196,8 +193,10 @@ class APIRouterTemplate:
             if not bypass_rate_limiter:
                 await self.rate_limiter.request()
 
-            request_header= headers_override if headers_override else self.default_headers
-            start_time = time.perf_counter() # Time this request
+            request_header = (
+                headers_override if headers_override else self.default_headers
+            )
+            start_time = time.perf_counter()  # Time this request
             response = await self.client.request(
                 method,
                 endpoint,
