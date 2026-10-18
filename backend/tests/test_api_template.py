@@ -33,7 +33,7 @@ class FakeRateLimiter:
         pass
 
 class DummyAPI(APIRouterTemplate):
-    async def _auth(self):
+    async def _async_auth(self):
         self.default_headers["Authorization"] = "test-token"
 
 
@@ -73,6 +73,7 @@ def test_context_manager_initializes_and_closes_client():
             client = api.client
             assert client is not None
             assert api.default_headers["X-Test"] == "one"
+            assert "X-Test" not in client.headers
 
         assert client.is_closed
         assert api.client is None
@@ -80,14 +81,33 @@ def test_context_manager_initializes_and_closes_client():
     asyncio.run(exercise())
 
 
-
-def test_request_without_client_raises_api_router_error():
+def test_request_initializes_client_when_missing(monkeypatch):
     api = _make_api()
+    requests = []
 
-    with pytest.raises(APIRouterError, match="Uninitialized"):
-        asyncio.run(api._request("GET", "/health"))
+    async def handler(request):
+        requests.append(request)
+        return httpx.Response(200, json={"ok": True})
 
-    assert api.rate_limiter.request_count == 0
+    async def create_client():
+        return _make_async_client(handler)
+
+    monkeypatch.setattr(api, "create_httpx_client", create_client)
+
+    async def exercise():
+        result = await api._request("GET", "/health")
+        client = api.client
+        await api.close()
+        return result, client
+
+    result, client = asyncio.run(exercise())
+
+    assert result == {"ok": True}
+    assert len(requests) == 1
+    assert client is not None
+    assert client.is_closed
+    assert api.client is None
+    assert api.rate_limiter.request_count == 1
 
 
 def test_oauth_auth_runs_before_request_and_updates_default_headers():
