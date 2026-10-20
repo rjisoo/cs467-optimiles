@@ -50,5 +50,6 @@ LOGGING_CONFIG = {
     },
 }
 
-def setup_logging() -> None:
-    dictConfig(LOGGING_CONFIG)
+
+dictConfig(LOGGING_CONFIG)
+
