@@ -103,6 +103,7 @@ class APIRouterTemplate:
 
     async def close(self):
         """Safely terminate the API client and save the latest rate limiter config file"""
+        logging.debug("%s close() is called",self.api_name)
         if self.client:
             await self.client.aclose()
             self.client = None
@@ -238,7 +239,7 @@ class APIRouterTemplate:
             )
             logging.error("Response body: %s", e.response.text)
             raise APIStatusError(
-                "API Status Code Error",
+                f"API Status Code Error {e.response.status_code}",
                 base_url=self.base_url,
                 endpoint=endpoint,
                 status_code=e.response.status_code,
