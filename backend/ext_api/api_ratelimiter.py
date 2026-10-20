@@ -77,7 +77,7 @@ class RateLimiter:
 
     default_config = {
         "name": "api.example.com",
-        "settings":{
+        "settings": {
             "backup_interval": 30,
         },
         "limit_per_month": {

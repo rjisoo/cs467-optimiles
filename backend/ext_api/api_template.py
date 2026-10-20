@@ -103,7 +103,7 @@ class APIRouterTemplate:
 
     async def close(self):
         """Safely terminate the API client and save the latest rate limiter config file"""
-        logging.debug("%s close() is called",self.api_name)
+        logging.debug("%s close() is called", self.api_name)
         if self.client:
             await self.client.aclose()
             self.client = None
