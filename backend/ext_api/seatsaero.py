@@ -4,7 +4,7 @@ import os
 import time
 import asyncio
 import dotenv
-
+from utils import bridge_run
 
 dotenv.load_dotenv()
 
@@ -35,20 +35,22 @@ class SeatsAeroAPI(APIRouterTemplate):
             if "Partner-Authorization" not in self.default_headers:
                 self.default_headers["Partner-Authorization"] = os.getenv("SEATSAERO_TOKEN")
 
-    async def cache_search(self, params):
+    async def async_cached_search(self, params):
         async with self.cache_lock:
             return await self.get("/search",params=params)
 
-    async def get_trips(self, path_id, params={}):
+    async def async_get_trips(self, trip_id, params={}):
         async with self.cache_lock:
-            return await self.get(f"/trips/{path_id}",params=params)
+            return await self.get(f"/trips/{trip_id}",params=params)
         
-    async def get_routes(self,params):
+    async def async_get_routes(self,params):
         async with self.cache_lock:
                     return await self.get("/routes",params=params)
-    
-    @staticmethod
-    def process_flight_info(result):
-         pass
 
+    def cached_research(self,params):
+        return bridge_run(self.async_cached_search(params))
+    def get_trips(self, trip_id, params={}):
+        return bridge_run(self.async_get_trips(trip_id,params))
+    def get_routes(self, params):
+        return bridge_run(self.async_get_routes(params))
 
