@@ -90,7 +90,7 @@ class RateLimiter:
             "max_requests": 1000,
             "current_quota": 0,
             "current_day": "1970-01-01",
-            "reset_time": "21:35:00+00:00",  # Reset time
+            "reset_time": "00:00:00+00:00",  # Reset time
             "soft_retry": False,  # flag for trying again after the quota is exceeded (Not yet implemented)
         },
         "limit_per_second": {
@@ -196,7 +196,7 @@ class RateLimiter:
             raise RateLimiterError("Max requests per second must be greater than 0.")
         if self.config["limit_per_second"]["mode"] not in ["strict", "loose"]:
             logging.error("Mode must be either 'strict' or 'loose'.")
-            raise RateLimiterError("Mode must be either 'strict' or 'loose'.")
+            raise RateLimiterError("PSL Mode must be either 'strict' or 'loose'.")
         if "usage" not in self.config:
             self.config["usage"] = {}
 
