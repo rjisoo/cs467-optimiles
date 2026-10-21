@@ -4,7 +4,6 @@ from utils import bridge_run
 from .api_exceptions import APIRouterError, APIStatusError, APITimeout
 from .seatsaero import SeatsAeroAPI
 
-
 seatsaero_api = SeatsAeroAPI()
 
 @atexit.register
