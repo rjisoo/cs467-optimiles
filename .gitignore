@@ -1,6 +1,12 @@
 # Created by https://www.toptal.com/developers/gitignore/api/python,windows,macos,linux,vue,react,flask
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,windows,macos,linux,vue,react,flask
 
+# Created by https://www.toptal.com/developers/gitignore/api/python,windows,macos,linux,vue,react,flask
+# Edit at https://www.toptal.com/developers/gitignore?templates=python,windows,macos,linux,vue,react,flask
+
+# Test files
+tests\config\*
+
 # Local environment values; keep sanitized examples shareable
 .env
 .env.*

@@ -1,0 +1,22 @@
+{
+    "url": "api.example.com",
+    "Usage": {},
+    "limit_per_month": {
+        "enabled": false,
+        "max_requests": 10000,
+        "current_quota": 0
+    },
+    "limit_per_day": {
+        "enabled": false,
+        "max_requests": 1000,
+        "current_quota": 0,
+        "current_day": "1970-01-01",
+        "reset_time": "21:35:00+00:00",
+        "soft_retry": false
+    },
+    "limit_per_second": {
+        "enabled": false,
+        "max_requests": 10,
+        "mode": "loose"
+    }
+}
