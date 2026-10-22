@@ -2,16 +2,29 @@
 
 import json
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, redirect, render_template, request, url_for
 from pydantic import ValidationError
 
 from backend.chat import handle_chat
 from backend.models import ChatRequest, SearchCriteria, SearchResponse
+from backend.openapi import build_openapi
 from backend.search import search_awards
 
 
 def create_app() -> Flask:
     app = Flask(__name__)
+
+    @app.get("/")
+    def index():
+        return redirect(url_for("api_docs"))
+
+    @app.get("/docs", strict_slashes=False)
+    def api_docs():
+        return render_template("swagger_ui.html")
+
+    @app.get("/openapi.json")
+    def openapi_spec():
+        return jsonify(build_openapi(request.script_root or "/"))
 
     @app.errorhandler(ValidationError)
     def handle_validation_error(error: ValidationError):
