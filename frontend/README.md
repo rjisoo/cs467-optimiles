@@ -18,14 +18,54 @@ npm run dev
 
 Open the local URL printed by Vite; press Ctrl+C to stop. The current starter needs no environment file or backend service. Backend connection details remain pending team agreement.
 
-From `frontend/`, the existing checks are:
+Run these commands from `frontend/`:
 
 ```sh
 npm run lint
+npm test
 npm run build
 ```
 
-Lint uses Oxlint; build runs TypeScript and Vite and writes ignored `dist/` output. `npm run preview` can serve an existing build locally. There is no application test suite yet.
+- `npm run dev` starts Vite with hot reload.
+- `npm run lint` runs ESLint with recommended JavaScript, TypeScript, React Hooks, and Vite Fast Refresh rules. Warnings fail the check; generated `dist/` files are ignored.
+- `npm run lint:fix` applies available automatic ESLint fixes.
+- `npm test` runs the test suite once and exits, suitable for local checks and CI.
+- `npm run test:watch` reruns affected tests as files change. Press `q` to stop.
+- `npm run build` checks TypeScript and builds the app into ignored `dist/` output.
+- `npm run preview` serves an existing production build locally.
+
+## Automatic checks before commits
+
+The repository's [pre-commit hook](../.githooks/pre-commit) runs frontend lint, then the full test suite before each commit. If either check fails, the commit stops. Checks use the current working files, including unstaged changes, and do not modify or stage files.
+
+After installing frontend dependencies, enable the hook once per clone. Run these commands from the **repository root**:
+
+```sh
+chmod +x .githooks/pre-commit
+git config --local core.hooksPath .githooks
+```
+
+Verify the hook without creating a commit:
+
+```sh
+git hook run pre-commit
+```
+
+The hook file is shared through Git, but the `core.hooksPath` setting is local: each teammate must enable it in their checkout. Node and npm must be available to the terminal or Git client that creates the commit.
+
+## Component tests
+
+[Vitest](https://vitest.dev/guide/) uses the existing Vite plugins and `@/` alias, with JSDOM as the test environment. [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/) renders components, `user-event` simulates interactions, and `jest-dom` supplies DOM assertions such as `toHaveFocus` and `toBeChecked`.
+
+Place tests beside the code they exercise, using `*.test.ts` or `*.test.tsx`. Import `describe`, `it`, `expect`, and mocking helpers explicitly from `vitest`. Run one file with `npm test -- src/App.test.tsx`.
+
+`src/test-setup.ts` loads the DOM matchers, cleans up rendered components after each test, and stubs `matchMedia` for the default desktop navigation plus `ResizeObserver` for Radix controls. Override these stubs in tests that need different browser behavior; global stubs are restored after each test. JSDOM does not perform browser layout; responsive sizing and visual checks still need a browser.
+
+The initial suite covers independent cabin selection, clearing the trip draft with focus restoration, and opening/dismissing award help with the keyboard. It needs no backend service.
+
+Verified on October 23, 2026 with the Node/npm versions above: ESLint passed with no warnings, all three tests passed, TypeScript and the production build passed, and the dev server served the page and app module successfully.
+
+`npm audit` reports one vulnerable package, the existing team-pinned Vite **8.3.2**, with advisories up to high severity. npm lists **8.3.5** as the fix; updating that shared pin remains a separate follow-up.
 
 ## Icons
 
