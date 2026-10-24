@@ -1,0 +1,152 @@
+/* Reference geometry is owned here; component styles own layout and insets.
+   1440px desktop: 1227px workspace → 1152px chat → 1114px card.
+   425px phone: 373px chat/card, including the reference scrollbar.
+   Desktop page scale is inherited, so padding/sidebar changes cannot resize its type.
+   Standalone cards instead use their own container width. */
+@property --award-scale-unit {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 1px;
+}
+
+:root {
+  --award-reference-chat: 1152;
+  --award-reference-card: 1114;
+  --award-reference-phone: 425;
+  --award-reference-phone-content: 373;
+  --award-desktop-highlight: 18;
+  --award-mobile-highlight: 13.5;
+  /* Preserve compact sizes at 768/901/1024px, reaching the full reference at 1440px. */
+  --award-tablet-scale: .625;
+  --award-sidebar-scale: .629;
+  --award-laptop-scale: .71;
+  --award-tablet-unit: calc(var(--award-tablet-scale) * .0625rem);
+}
+
+.app-shell--award-preview {
+  --preview-sidebar-width: clamp(198px, 13vw, 248px);
+  /* Unitless viewport progress keeps the rem-sized anchors continuous under text enlargement. */
+  --award-tablet-progress: clamp(0, calc((100vw - 768px) / 133px), 1);
+  --award-sidebar-progress: clamp(0, calc((100vw - 901px) / 123px), 1);
+  --award-desktop-progress: clamp(0, calc((100vw - 1024px) / 416px), 1);
+  --award-desktop-unit: calc(var(--award-tablet-unit)
+    + (var(--award-sidebar-scale) - var(--award-tablet-scale)) * .0625rem * var(--award-tablet-progress)
+    + (var(--award-laptop-scale) - var(--award-sidebar-scale)) * .0625rem * var(--award-sidebar-progress)
+    + (1 - var(--award-laptop-scale)) * .0625rem * var(--award-desktop-progress));
+  --award-scale-unit: var(--award-desktop-unit);
+  --award-page-unit: var(--award-scale-unit);
+  --font-control: calc(14 * var(--award-scale-unit));
+  --font-body: calc(16 * var(--award-scale-unit));
+  --font-small: calc(12 * var(--award-scale-unit));
+  --font-caption: calc(11 * var(--award-scale-unit));
+  --award-brand-size: calc(21 * var(--award-scale-unit));
+  --space-1: calc(8 * var(--award-scale-unit));
+  --space-2: calc(16 * var(--award-scale-unit));
+  --space-3: calc(24 * var(--award-scale-unit));
+  --space-4: calc(32 * var(--award-scale-unit));
+}
+.app-shell--award-preview .entry-intro,
+.award-preview {
+  --award-scale-unit: var(--award-page-unit, clamp(.035rem, calc(100cqi / var(--award-reference-chat)), .0625rem));
+  --award-title-size: calc(32 * var(--award-scale-unit));
+}
+.award-preview {
+  --award-highlight-size: calc(var(--award-desktop-highlight) * var(--award-scale-unit));
+  --award-copy-size: calc(14 * var(--award-scale-unit));
+}
+.award-card {
+  --award-scale-unit: clamp(.04rem, calc(100cqi / var(--award-reference-phone-content)), .0625rem);
+  --award-highlight-size: calc(var(--award-mobile-highlight) * var(--award-scale-unit));
+  --award-label-size: calc(11.75 * var(--award-scale-unit));
+  --award-fee-size: calc(10.5 * var(--award-scale-unit));
+  --award-value-size: calc(10 * var(--award-scale-unit));
+  --award-badge-size: calc(10 * var(--award-scale-unit));
+}
+
+@media (56.25rem < width <= 80rem) {
+  .app-shell--award-preview { --preview-sidebar-width: clamp(128px, calc(18.5vw - 38px), 198px); }
+}
+@media (width <= 56.25rem) {
+  .app-shell--award-preview { --preview-sidebar-width: 0px; }
+}
+@media (width < 768px) {
+  .app-shell--award-preview {
+    --award-scale-unit: clamp(.04rem, calc(100vw / var(--award-reference-phone)), .0625rem);
+    --font-control: calc(12 * var(--award-scale-unit));
+    --font-body: calc(13.28 * var(--award-scale-unit));
+    --font-small: calc(10.2 * var(--award-scale-unit));
+    --font-caption: calc(9.2 * var(--award-scale-unit));
+    --award-brand-size: calc(17.27 * var(--award-scale-unit));
+  }
+  .app-shell--award-preview .entry-intro,
+  .award-preview {
+    --award-scale-unit: clamp(.04rem, calc(100cqi / var(--award-reference-phone-content)), .0625rem);
+    --award-title-size: calc(21.13 * var(--award-scale-unit));
+  }
+  .award-preview {
+    --award-highlight-size: calc(var(--award-mobile-highlight) * var(--award-scale-unit));
+    --award-copy-size: calc(11.98 * var(--award-scale-unit));
+  }
+}
+
+/* Blend phone → compact desktop between the chosen viewport anchors.
+   Each size = phone + (tablet − phone) × progress. Layout breakpoints stay separate. */
+@media (425px < width < 768px) {
+  .app-shell--award-preview {
+    --award-phone-blend: clamp(0, calc((100vw - 425px) / 343px), 1);
+    --award-phone-unit: clamp(.04rem, 1px, .0625rem);
+    --award-scale-unit: calc(var(--award-phone-unit)
+      + (var(--award-tablet-unit) - var(--award-phone-unit)) * var(--award-phone-blend));
+    --font-control: calc(12 * var(--award-phone-unit)
+      + (14 * var(--award-tablet-unit) - 12 * var(--award-phone-unit)) * var(--award-phone-blend));
+    --font-body: calc(13.28 * var(--award-phone-unit)
+      + (16 * var(--award-tablet-unit) - 13.28 * var(--award-phone-unit)) * var(--award-phone-blend));
+    --font-small: calc(10.2 * var(--award-phone-unit)
+      + (12 * var(--award-tablet-unit) - 10.2 * var(--award-phone-unit)) * var(--award-phone-blend));
+    --font-caption: calc(9.2 * var(--award-phone-unit)
+      + (11 * var(--award-tablet-unit) - 9.2 * var(--award-phone-unit)) * var(--award-phone-blend));
+    --award-brand-size: calc(17.27 * var(--award-phone-unit)
+      + (21 * var(--award-tablet-unit) - 17.27 * var(--award-phone-unit)) * var(--award-phone-blend));
+  }
+  .app-shell--award-preview .entry-intro,
+  .app-shell--award-preview .award-preview,
+  .app-shell--award-preview .award-card {
+    --award-scale-unit: var(--award-page-unit);
+    --award-title-size: calc(21.13 * var(--award-phone-unit)
+      + (32 * var(--award-tablet-unit) - 21.13 * var(--award-phone-unit)) * var(--award-phone-blend));
+    --award-highlight-size: calc(var(--award-mobile-highlight) * var(--award-phone-unit)
+      + (var(--award-desktop-highlight) * var(--award-tablet-unit) - var(--award-mobile-highlight) * var(--award-phone-unit)) * var(--award-phone-blend));
+    --award-copy-size: calc(11.98 * var(--award-phone-unit)
+      + (14 * var(--award-tablet-unit) - 11.98 * var(--award-phone-unit)) * var(--award-phone-blend));
+    --award-label-size: calc(11.75 * var(--award-phone-unit)
+      + (12 * var(--award-tablet-unit) - 11.75 * var(--award-phone-unit)) * var(--award-phone-blend));
+    --award-fee-size: calc(10.5 * var(--award-phone-unit)
+      + (12 * var(--award-tablet-unit) - 10.5 * var(--award-phone-unit)) * var(--award-phone-blend));
+    --award-value-size: calc(10 * var(--award-phone-unit)
+      + (12 * var(--award-tablet-unit) - 10 * var(--award-phone-unit)) * var(--award-phone-blend));
+    --award-badge-size: calc(10 * var(--award-phone-unit)
+      + (11 * var(--award-tablet-unit) - 10 * var(--award-phone-unit)) * var(--award-phone-blend));
+  }
+}
+/* Page typography also stays continuous if enlarged text selects the 2×2 layout. */
+@media (width >= 768px) {
+  .app-shell--award-preview .award-card {
+    --award-scale-unit: var(--award-page-unit);
+    --award-highlight-size: calc(var(--award-desktop-highlight) * var(--award-scale-unit));
+    --award-label-size: calc(12 * var(--award-scale-unit));
+    --award-fee-size: var(--award-label-size);
+    --award-value-size: var(--award-label-size);
+    --award-badge-size: calc(11 * var(--award-scale-unit));
+  }
+}
+@media (width >= 48rem) {
+  @container (width >= 40rem) {
+    .award-card {
+      --award-scale-unit: var(--award-page-unit, clamp(.035rem, calc(100cqi / var(--award-reference-card)), .0625rem));
+      --award-highlight-size: calc(var(--award-desktop-highlight) * var(--award-scale-unit));
+      --award-label-size: calc(12 * var(--award-scale-unit));
+      --award-value-size: var(--award-label-size);
+      --award-badge-size: calc(11 * var(--award-scale-unit));
+    }
+  }
+}

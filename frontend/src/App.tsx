@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import AppNavigation from './components/AppNavigation'
 import AwardHelp from './components/AwardHelp'
+import AwardPreview from './components/AwardPreview'
 import TripEntry, { type TripDraft } from './components/TripEntry'
 import './App.css'
 
@@ -18,17 +19,19 @@ function createEmptyTripDraft(): TripDraft {
 
 function App() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [showAwardPreview, setShowAwardPreview] = useState(() => new URLSearchParams(window.location.search).get('preview') === 'awards')
   const [draft, setDraft] = useState(createEmptyTripDraft)
   const entryHeadingRef = useRef<HTMLHeadingElement>(null)
 
   function startNewTrip() {
     setIsMenuOpen(false)
+    setShowAwardPreview(false)
     setDraft(createEmptyTripDraft())
     entryHeadingRef.current?.focus()
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${showAwardPreview ? ' app-shell--award-preview' : ''}`}>
       <a className="skip-link" href="#trip-entry">Skip to trip</a>
       <AppNavigation
         isMenuOpen={isMenuOpen}
@@ -39,7 +42,7 @@ function App() {
         <header className="entry-intro">
           <div>
             <p className="entry-eyebrow">YOUR NEXT JOURNEY</p>
-            <h1 id="trip-entry" ref={entryHeadingRef} tabIndex={-1}>Find your next award trip</h1>
+            <h1 id="trip-entry" ref={entryHeadingRef} tabIndex={-1}>{showAwardPreview ? 'Your award trip' : 'Find your next award trip'}</h1>
           </div>
           <AwardHelp onOpen={() => setIsMenuOpen(false)} />
           <p id="preview-notice">
@@ -47,7 +50,7 @@ function App() {
             Search and prompt interpretation are not connected yet.
           </p>
         </header>
-        <TripEntry draft={draft} onDraftChange={setDraft} />
+        {showAwardPreview ? <AwardPreview /> : <TripEntry draft={draft} onDraftChange={setDraft} />}
       </main>
     </div>
   )

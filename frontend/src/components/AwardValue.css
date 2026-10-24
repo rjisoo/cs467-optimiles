@@ -1,0 +1,95 @@
+/* Cards provide sizing tokens; fallbacks also support a standalone value. */
+.award-value {
+  --award-value-scale: var(--award-scale-unit, 1px);
+  display: flex;
+  align-self: end;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: calc(4 * var(--award-value-scale)) calc(3 * var(--award-value-scale));
+  min-width: 0;
+  font-size: var(--award-value-size, calc(10 * var(--award-value-scale)));
+  line-height: 1;
+  margin-top: calc(6 * var(--award-value-scale));
+  padding-top: 0;
+  border-top: 0;
+}
+.award-value > span:first-child {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 .15em;
+  max-width: 100%;
+}
+.award-value-unit { white-space: nowrap; }
+.award-value strong { font-size: var(--award-highlight-size, 1.125rem); }
+.award-rating-trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  flex-shrink: 0;
+  width: fit-content;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.award-rating {
+  min-height: 0;
+  padding: calc(2 * var(--award-value-scale)) calc(3.25 * var(--award-value-scale));
+  border: 0;
+  border-radius: calc(5 * var(--award-value-scale));
+  font-size: var(--award-badge-size, calc(10 * var(--award-value-scale)));
+  line-height: 1;
+  color: var(--color-value-good);
+  background: var(--color-value-good-surface);
+}
+.award-rating[data-rating='Fair'] { color: var(--color-value-fair); background: var(--color-value-fair-surface); }
+.award-rating[data-rating='Bad'] { color: var(--color-destructive); background: var(--color-value-bad-surface); }
+.award-explanation {
+  z-index: 50;
+  display: grid;
+  gap: 8px;
+  width: min(340px, calc(100vw - 32px));
+  max-height: var(--radix-popover-content-available-height);
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  color: var(--color-text);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-dialog);
+  font-size: var(--font-control);
+  overflow-wrap: anywhere;
+}
+.award-explanation-header { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.award-explanation-close { padding: 4px 8px; min-height: 32px; border: 1px solid var(--color-border); border-radius: 6px; font: inherit; }
+
+@media (any-pointer: coarse) {
+  .award-rating-trigger::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100%;
+    height: 100%;
+    min-width: 44px;
+    min-height: 44px;
+    transform: translate(-50%, -50%);
+  }
+}
+
+@media (width < 48rem) {
+  .award-card .award-value { margin-top: calc(4 * var(--award-value-scale)); }
+}
+
+@media (width >= 48rem) {
+  @container (width >= 40rem) {
+    .award-card .award-value {
+      margin-top: calc(4 * var(--award-value-scale));
+      padding-top: calc(4 * var(--award-value-scale));
+      border-top: 1px solid var(--color-border);
+    }
+    .award-card .award-rating {
+      padding-inline: calc(7.5 * var(--award-value-scale));
+    }
+  }
+}
