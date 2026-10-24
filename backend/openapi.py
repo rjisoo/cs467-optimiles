@@ -2,10 +2,33 @@
 
 from pydantic.json_schema import models_json_schema
 
+from backend.errors import UPSTREAM_STATUS_MESSAGES
 from backend.models import ChatRequest, ChatResponse, SearchCriteria, SearchResponse
 
 
-def _post_operation(summary, description, request_schema, response_schema, example):
+def _error_response(description, message):
+    return {
+        "description": description,
+        "content": {
+            "application/json": {
+                "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+                "example": {"error": message},
+            }
+        },
+    }
+
+
+# Award search failures; /api/chat reports these in the reply instead.
+_UPSTREAM_RESPONSES = {
+    "502": _error_response("Award search service failed", UPSTREAM_STATUS_MESSAGES[502]),
+    "503": _error_response("Award search usage limit reached", UPSTREAM_STATUS_MESSAGES[503]),
+    "504": _error_response("Award search timed out", UPSTREAM_STATUS_MESSAGES[504]),
+}
+
+
+def _post_operation(
+    summary, description, request_schema, response_schema, example, extra_responses=None
+):
     return {
         "summary": summary,
         "description": description,
@@ -26,6 +49,8 @@ def _post_operation(summary, description, request_schema, response_schema, examp
                     }
                 },
             },
+            **(extra_responses or {}),
+            "500": _error_response("Unexpected server error", "Internal server error"),
         },
     }
 
@@ -41,6 +66,11 @@ def build_openapi(server_url: str = "/") -> dict:
         ref_template="#/components/schemas/{model}",
     )
     schemas = definitions["$defs"]
+    schemas["ErrorResponse"] = {
+        "type": "object",
+        "required": ["error"],
+        "properties": {"error": {"type": "string", "description": "Message safe to show users"}},
+    }
     schemas["ValidationErrorResponse"] = {
         "type": "object",
         "required": ["error", "details"],
@@ -109,6 +139,7 @@ def build_openapi(server_url: str = "/") -> dict:
                         "cabin": "business",
                         "passengers": 2,
                     },
+                    _UPSTREAM_RESPONSES,
                 )
             },
             "/api/chat": {

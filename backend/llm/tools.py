@@ -4,12 +4,16 @@ The LLM only chooses arguments. Code validates them with SearchCriteria and
 runs the search; every number the user sees comes from search.py."""
 
 import json
+import logging
 from typing import get_args
 
 from pydantic import ValidationError
 
+from backend.errors import UPSTREAM_ERRORS, describe_upstream_error
 from backend.models import Cabin, Result, SearchCriteria
 from backend.search import search_awards
+
+logger = logging.getLogger(__name__)
 
 SEARCH_AWARDS = "search_awards"
 
@@ -42,14 +46,19 @@ def run_search_tool(args: dict) -> tuple[dict, list[Result]]:
 
     Returns (payload sent back to the LLM, results shown to the user). Invalid
     arguments produce an error payload instead of raising, so the LLM can ask
-    the user to clarify."""
+    the user to clarify. Award search failures also produce an error payload,
+    so the LLM can tell the user instead of the whole chat request failing."""
     try:
         criteria = SearchCriteria.model_validate(args)
     except ValidationError as error:
         details = json.loads(error.json(include_url=False, include_input=False))
         return {"error": "Invalid search criteria", "details": details}, []
 
-    results = search_awards(criteria)
+    try:
+        results = search_awards(criteria)
+    except UPSTREAM_ERRORS as error:
+        logger.warning("Award search failed", exc_info=error)
+        return {"error": describe_upstream_error(error)[1]}, []
     payload: dict = {
         "count": len(results),
         "results": [result.model_dump(mode="json") for result in results],
