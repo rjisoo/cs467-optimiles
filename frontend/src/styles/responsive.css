@@ -1,0 +1,38 @@
+/* Site-wide sizing defaults. Pages/components consume semantic tokens;
+   the compact award profile may override them without changing form/dialog defaults.
+   Layout queries remain local: navigation 56.25rem, form containers 12/36/44rem. */
+:root {
+  --layout-progress: clamp(0, calc((100vw - 425px) / 1015px), 1);
+  --space-1: calc(.375rem + .125rem * var(--layout-progress));
+  --space-2: calc(2 * var(--space-1));
+  --space-3: calc(3 * var(--space-1));
+  --space-4: calc(4 * var(--space-1));
+  --space-5: calc(6 * var(--space-1));
+  --radius: 1rem;
+  --radius-control: .5rem;
+  --font-body: clamp(.8125rem, calc(.75875rem + .268vw), 1rem);
+  --font-control: clamp(.75rem, calc(.714375rem + .179vw), .875rem);
+  --font-input: var(--font-control);
+  --font-small: clamp(.625rem, calc(.589375rem + .179vw), .75rem);
+  --font-caption: clamp(.5625rem, calc(.526875rem + .179vw), .6875rem);
+  --font-section: clamp(.9375rem, calc(.88375rem + .268vw), 1.125rem);
+  --font-title: clamp(1.25rem, calc(1.035625rem + 1.072vw), 2rem);
+  --font-brand: clamp(1rem, calc(.910625rem + .446vw), 1.3125rem);
+  --font-dialog-title: clamp(1.25rem, calc(1.17875rem + .357vw), 1.5rem);
+  --page-max-width: 85rem;
+  --page-gutter: clamp(var(--space-3), 3vw, 3.5rem);
+  --sidebar-width: clamp(198px, 13vw, 248px);
+  --control-min-height: 2.75rem;
+  --control-padding-inline: .75rem;
+  --control-padding-block: .625rem;
+  --composer-min-height: 5rem;
+  --composer-max-height: 14rem;
+  --dialog-gutter: 1rem;
+  --dialog-max-width: 24rem;
+  --dialog-padding: var(--space-3);
+}
+
+/* Keep editable text readable on touch devices, independently of compact display data. */
+@media (any-pointer: coarse) {
+  :root { --font-input: max(1rem, var(--font-control)); }
+}

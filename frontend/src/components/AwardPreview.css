@@ -1,0 +1,57 @@
+.award-preview {
+  display: grid;
+  gap: calc(12 * var(--award-scale-unit));
+  color: var(--color-text);
+  font-size: var(--award-copy-size);
+}
+
+.award-preview-reply {
+  display: grid;
+  grid-template-columns: calc(28 * var(--award-scale-unit)) minmax(0, 1fr);
+  align-items: center;
+  gap: calc(8 * var(--award-scale-unit)) calc(12 * var(--award-scale-unit));
+}
+
+.award-preview-avatar {
+  display: grid;
+  place-items: center;
+  height: calc(28 * var(--award-scale-unit));
+  border-radius: 50%;
+  color: var(--color-on-nav);
+  background: var(--color-nav);
+}
+.award-preview-avatar .icon { width: calc(18 * var(--award-scale-unit)); height: calc(18 * var(--award-scale-unit)); }
+
+.award-preview-assistant { font-size: var(--award-highlight-size); font-weight: 600; color: var(--color-text-muted); }
+.award-preview-message { grid-column: 1 / -1; font-size: var(--award-highlight-size); font-weight: 600; line-height: 1.4; }
+.award-preview-results {
+  display: grid;
+  gap: calc(12 * var(--award-scale-unit));
+  min-width: 0;
+  padding: calc(18 * var(--award-scale-unit));
+  border: 1px solid var(--color-border);
+  border-radius: calc(16 * var(--award-scale-unit));
+  background: var(--color-surface-soft);
+}
+
+.award-preview-results > header {
+  padding-bottom: calc(14 * var(--award-scale-unit));
+  border-bottom: 1px solid var(--color-border);
+}
+
+.award-preview h2 { font-size: var(--award-highlight-size); font-weight: 600; }
+.award-preview-results > header p,
+.award-preview-results > p { color: var(--color-text-muted); }
+.award-preview-request {
+  justify-self: end;
+  width: 60%;
+  overflow-wrap: anywhere;
+  padding: calc(12 * var(--award-scale-unit)) calc(16 * var(--award-scale-unit));
+  border-radius: calc(14 * var(--award-scale-unit)) calc(14 * var(--award-scale-unit)) calc(4 * var(--award-scale-unit)) calc(14 * var(--award-scale-unit));
+  background: var(--color-user-bubble);
+}
+
+@media (width < 48rem) {
+  .award-preview-request { width: 80%; padding: calc(10 * var(--award-scale-unit)) calc(12 * var(--award-scale-unit)); }
+  .award-preview-results { padding: 0; border: 0; border-radius: 0; background: transparent; }
+}

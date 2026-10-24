@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import Icon from './Icon'
@@ -9,15 +9,14 @@ type AppNavigationProps = {
   onNewTrip: () => void
 }
 
-const mobileQuery = '(max-width: 48rem)'
+const mobileQuery = '(max-width: 56.25rem)'
 
 function AppNavigation({ isMenuOpen, onMenuOpenChange, onNewTrip }: AppNavigationProps) {
-  const [isDesktop, setIsDesktop] = useState(() => !window.matchMedia(mobileQuery).matches)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const navigationRef = useRef<HTMLElement>(null)
   const newTripButtonRef = useRef<HTMLButtonElement>(null)
 
-  useEffect(() => {
+  const subscribeToViewport = useCallback((notify: () => void) => {
     // Keep this breakpoint aligned with the shell's CSS media query.
     const mobileViewport = window.matchMedia(mobileQuery)
     let focusFrame = 0
@@ -25,8 +24,8 @@ function AppNavigation({ isMenuOpen, onMenuOpenChange, onNewTrip }: AppNavigatio
     function handleViewportChange(event: MediaQueryListEvent) {
       const focusInNavigation = navigationRef.current?.contains(document.activeElement)
       const focusOnMenu = document.activeElement === menuButtonRef.current
-      setIsDesktop(!event.matches)
       onMenuOpenChange(false)
+      notify()
       cancelAnimationFrame(focusFrame)
       if (event.matches && focusInNavigation) {
         menuButtonRef.current?.focus()
@@ -42,6 +41,8 @@ function AppNavigation({ isMenuOpen, onMenuOpenChange, onNewTrip }: AppNavigatio
       cancelAnimationFrame(focusFrame)
     }
   }, [onMenuOpenChange])
+
+  const isDesktop = useSyncExternalStore(subscribeToViewport, () => !window.matchMedia(mobileQuery).matches)
 
   useEffect(() => {
     if (!isMenuOpen) return
@@ -60,8 +61,8 @@ function AppNavigation({ isMenuOpen, onMenuOpenChange, onNewTrip }: AppNavigatio
       <header className="brand-bar">
         <span className="brand"><span className="brand-mark"><Icon name="plane" /></span>OptiMiles</span>
         <CollapsibleTrigger asChild>
-          <Button className="menu-toggle" variant="outline" type="button" ref={menuButtonRef}>
-            {isMenuOpen ? 'Close menu' : 'Menu'}
+          <Button className="menu-toggle" variant="ghost" type="button" ref={menuButtonRef} aria-label={isMenuOpen ? 'Close menu' : 'Menu'}>
+            <Icon name="menu" />
           </Button>
         </CollapsibleTrigger>
       </header>
@@ -69,7 +70,7 @@ function AppNavigation({ isMenuOpen, onMenuOpenChange, onNewTrip }: AppNavigatio
         <aside className="sidebar" ref={navigationRef} data-open={isMenuOpen}>
           <nav aria-label="Main navigation">
             <Button className="new-trip" variant="outline" type="button" ref={newTripButtonRef}
-              aria-current="page" onClick={onNewTrip}>
+              onClick={onNewTrip}>
               <Icon name="plus" /> New trip
             </Button>
             <Button className="nav-item" variant="ghost" type="button" disabled>
