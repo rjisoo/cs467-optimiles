@@ -87,12 +87,17 @@ Tests use a fake Gemini client, so `pytest` needs no key or network.
 | POST   | `/api/chat`   | `{"message", "history"}` | `{"reply", "results"}`  |
 
 Request and response shapes are defined in `models.py`. Invalid input returns
-`400` with `{"error": "Invalid request", "details": [...]}`.
+`400` with `{"error": "Invalid request", "details": [...]}`. Every other error is
+JSON with a user-facing `error` message: `404`/`405` for unknown routes or methods,
+`500` for unexpected server errors, and, from `/api/search`, `502`/`503`/`504` when
+the award search service fails, hits its usage limit, or times out (mapped in
+`errors.py`). In `/api/chat`, award search failures come back in the reply instead.
 
 ## Layout
 
 - `app.py`: Flask routes only (validate, call a function, return JSON)
 - `models.py`: Pydantic models for the API contract
+- `errors.py`: award search failures mapped to HTTP status codes and user-facing messages
 - `openapi.py`: OpenAPI route metadata and generated model schemas
 - `templates/swagger_ui.html`: Swagger UI documentation page
 - `search.py`: `search_awards()` (stubbed with fake data) and redemption value math
