@@ -1,17 +1,18 @@
 import logging
 import json
 from pathlib import Path
-import os
 
 logger = logging.getLogger(__name__)
 
-reward_program_info_path = None
+reward_program_info_path = (
+    Path(__file__).resolve().parent.parent / "config" / "reward_program_info.json"
+)
 reward_programs = None
 
 
 def init_reward_eval():
-    global reward_program_info_path, reward_programs
-    reward_program_info_path = Path(os.getenv("REWARD_PROGRAM_VALUE_INFO_PATH"))
+    global reward_programs
+
     try:
         with open(reward_program_info_path, "r", encoding="utf-8") as f:
             reward_programs = json.load(f)

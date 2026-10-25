@@ -30,7 +30,9 @@ class APIRouterTemplate:
         oauth (bool): Whether auth should be applied before requests.
     """
 
-    rate_limiter_config_dir = "backend/config/rate_limiter/"
+    rate_limiter_config_dir = (
+        Path(__file__).resolve().parent.parent / "config" / "rate_limiter"
+    )
     rate_limiter_config_ext = ".json"
 
     def __init__(

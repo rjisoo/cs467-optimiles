@@ -22,7 +22,7 @@ LOGGING_CONFIG = {
         "file": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "default",
-            "filename": os.getenv("BACKEND_LOG_PATH") or "backend/logs/backend.log",
+            "filename": os.getenv("BACKEND_LOG_PATH") or Path(__file__).resolve().parent.parent / "logs" / "backend.log",
             "maxBytes": 10485760,  # 10 MB
             "backupCount": 5,      # Keep up to 5 backup files
             "encoding": "utf-8",
@@ -56,6 +56,6 @@ LOGGING_CONFIG = {
 LOG_PATH = Path(LOGGING_CONFIG["handlers"]["file"]["filename"]).parent
 LOG_PATH.mkdir(parents=True, exist_ok=True)
 LOG_PATH.chmod(0o700)  # Set directory permissions to rwx------ for security
-LOG_PATH.touch(exist_ok=True) 
+LOG_PATH.touch(exist_ok=True)
 
 dictConfig(LOGGING_CONFIG)

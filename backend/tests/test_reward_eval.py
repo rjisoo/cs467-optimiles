@@ -7,6 +7,7 @@ from backend.ext_api import (
     get_reward_value,
     get_banks,
 )
+from backend.ext_api import reward_eval
 import copy
 import os
 
@@ -59,16 +60,18 @@ def test_reinitialize_reward_eval(monkeypatch):
         "point_value": 0.02,
         "logo_url": "https://example.com/testbank_logo.png",
     }
-    test_file_path = Path("backend/config/test_reward_program_info.json")
+    test_file_path = Path(
+        reward_eval.reward_program_info_path.parent / "test_reward_program_info.json"
+    )
+    reward_eval.reward_program_info_path = (
+        test_file_path  # Set the path to the test file
+    )
 
     with open(test_file_path, "w", encoding="utf-8") as file:
         json.dump(new_json, file, indent=4)
 
-    monkeypatch.setenv(
-        "REWARD_PROGRAM_VALUE_INFO_PATH", "backend/config/test_reward_program_info.json"
-    )
-
     init_reward_eval()
+    os.remove(test_file_path)
     reward_info = get_all_reward_info()
     assert "TestBank" in reward_info
     assert reward_info["TestBank"]["full_name"] == "Test Bank"
@@ -76,4 +79,3 @@ def test_reinitialize_reward_eval(monkeypatch):
     assert (
         reward_info["TestBank"]["logo_url"] == "https://example.com/testbank_logo.png"
     )
-    os.remove(test_file_path)
