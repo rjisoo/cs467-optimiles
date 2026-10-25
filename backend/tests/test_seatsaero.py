@@ -2,7 +2,7 @@ import asyncio
 import pytest
 from unittest.mock import AsyncMock, Mock
 
-from ext_api import APIStatusError, SeatsAeroAPI
+from backend.ext_api import APIStatusError, SeatsAeroAPI
 
 
 @pytest.mark.parametrize(

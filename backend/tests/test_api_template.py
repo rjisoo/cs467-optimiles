@@ -12,7 +12,7 @@ from backend.ext_api import (
     APITimeout,
 )
 from backend.ext_api.api_template import APIRouterTemplate
-from utils import bridge_run
+from backend.utils import bridge_run
 
 from backend.ext_api.api_exceptions import RateLimiterError
 
@@ -237,7 +237,9 @@ def test_sync_http_method_wrappers_delegate_to_async_methods(
     api = _make_api()
     async_method = AsyncMock(return_value={"ok": True})
     monkeypatch.setattr(api, f"async_{method}", async_method)
-    monkeypatch.setattr(api_template_module, "bridge_run", lambda coro: asyncio.run(coro))
+    monkeypatch.setattr(
+        api_template_module, "bridge_run", lambda coro: asyncio.run(coro)
+    )
 
     result = getattr(api, method)(
         "/resource",
@@ -259,7 +261,9 @@ def test_sync_request_wrapper_delegates_to_async_request(monkeypatch):
     api = _make_api()
     async_request = AsyncMock(return_value={"ok": True})
     monkeypatch.setattr(api, "_async_request", async_request)
-    monkeypatch.setattr(api_template_module, "bridge_run", lambda coro: asyncio.run(coro))
+    monkeypatch.setattr(
+        api_template_module, "bridge_run", lambda coro: asyncio.run(coro)
+    )
     headers = {"Authorization": "test-token"}
 
     result = api._request(

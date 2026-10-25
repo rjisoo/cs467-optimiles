@@ -1,7 +1,12 @@
 import pytest
 import json
 from pathlib import Path
-from ext_api import init_reward_eval, get_all_reward_info, get_reward_value, get_banks
+from backend.ext_api import (
+    init_reward_eval,
+    get_all_reward_info,
+    get_reward_value,
+    get_banks,
+)
 import copy
 import os
 
