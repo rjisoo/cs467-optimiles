@@ -4,17 +4,20 @@ import httpx
 import time
 from .api_ratelimiter import RateLimiter
 from pathlib import Path
+from utils import bridge_run
 
 # Set current module name for logging
 logger = logging.getLogger(__name__)
+
+# Citation: the following request method wrappers and async methods were refactored with the help of Copilot.
+# This transcript backend/docs/GenAI.md entry documents the GenAI interaction that led to my [code, paper, solution etc.]
 
 
 class APIRouterTemplate:
     """Async HTTP template for external API clients.
 
-    This class creates and manages an httpx.AsyncClient for outbound calls,
-    manages default headers and automatically attaches to the live client
-    when submitting a request, and provides a small request wrapper for GET, POST, and PUT methods.
+    This class manages an httpx.AsyncClient and provides async HTTP request
+    methods with synchronous wrappers for GET, POST, and PUT.
 
     Attributes:
         base_url (str): Base URL used for all requests.
@@ -160,15 +163,30 @@ class APIRouterTemplate:
             "You forgot to implement the _auth method in this subclass."
         )
 
-    async def record_usage(self, token):
-        """Record a token use"""
+    async def async_record_usage(self, token: int) -> None:
+        """Asynchronously record token usage.
+
+        Args:
+            token (int): Number of tokens to record.
+        Raises:
+            RateLimiterError: If the rate limiter cannot record usage.
+        """
         await self.rate_limiter.record_usage(token)
+
+    def record_usage(self, token: int) -> None:
+        """Synchronously record token usage.
+        Args:
+            token (int): Number of tokens to record.
+        Raises:
+            RateLimiterError: If the rate limiter cannot record usage.
+        """
+        return bridge_run(self.async_record_usage(token))
 
     async def save_rate_limiter_config(self):
         """Saves the current rate limiter configuration to the json file"""
         await self.rate_limiter.save_config()
 
-    async def _request(
+    async def _async_request(
         self,
         method: str,
         endpoint: str,
@@ -254,7 +272,42 @@ class APIRouterTemplate:
             logging.error("Connection error for %s: %s", e.request.url, e)
             raise APIRouterError from e
 
-    async def get(
+    def _request(
+        self,
+        method: str,
+        endpoint: str,
+        payload: dict | None = None,
+        params: dict | None = None,
+        headers_override: dict | None = None,
+        bypass_rate_limiter: bool = False,
+    ) -> dict:
+        """Synchronously send an HTTP request.
+
+        Args:
+            method (str): HTTP method to call, such as "GET", "POST", or "PUT".
+            endpoint (str): API route to request.
+            payload (dict | None): Request payload to send with the API call.
+            params (dict | None): Query parameters to include in the request.
+            headers_override (dict | None): Request headers to override,
+                an override ignores the default headers completely.
+            bypass_rate_limiter (bool): Whether to bypass rate limiting.
+
+        Returns:
+            dict: Parsed JSON response.
+
+        Raises:
+            APIRouterError: If the async client has not been initialized or the
+                network layer fails.
+            APIStatusError: If the API returns a non-2xx HTTP status code.
+            APITimeout: If the request exceeds the configured timeout.
+        """
+        return bridge_run(
+            self._async_request(
+                method, endpoint, payload, params, headers_override, bypass_rate_limiter
+            )
+        )
+
+    async def async_get(
         self,
         endpoint: str,
         payload: dict | None = None,
@@ -277,11 +330,44 @@ class APIRouterTemplate:
             APIStatusError: If the API responds with a non-2xx HTTP status.
             APITimeout: If the request exceeds the configured timeout.
         """
-        return await self._request(
+        return await self._async_request(
             "GET", endpoint, payload, params, bypass_rate_limiter=bypass_rate_limiter
         )
 
-    async def post(
+    def get(
+        self,
+        endpoint: str,
+        payload: dict | None = None,
+        params: dict | None = None,
+        bypass_rate_limiter: bool = False,
+    ) -> dict:
+        """Synchronously send an HTTP GET request.
+
+        Args:
+            endpoint (str): Endpoint or API route to request.
+            payload (dict | None): Optional payload for the GET request.
+            params (dict | None): Query-string parameters.
+            bypass_rate_limiter (bool): Whether to bypass rate limiting.
+
+        Returns:
+            dict: The parsed JSON response returned by the API.
+
+        Raises:
+            APIRouterError: If the request client is not initialized or the
+                network layer fails.
+            APIStatusError: If the API responds with a non-2xx HTTP status.
+            APITimeout: If the request exceeds the configured timeout.
+        """
+        return bridge_run(
+            self.async_get(
+                endpoint,
+                payload=payload,
+                params=params,
+                bypass_rate_limiter=bypass_rate_limiter,
+            )
+        )
+
+    async def async_post(
         self,
         endpoint: str,
         payload: dict | None = None,
@@ -304,11 +390,44 @@ class APIRouterTemplate:
             APIStatusError: If the API responds with a non-2xx HTTP status.
             APITimeout: If the request exceeds the configured timeout.
         """
-        return await self._request(
+        return await self._async_request(
             "POST", endpoint, payload, params, bypass_rate_limiter=bypass_rate_limiter
         )
 
-    async def put(
+    def post(
+        self,
+        endpoint: str,
+        payload: dict | None = None,
+        params: dict | None = None,
+        bypass_rate_limiter: bool = False,
+    ) -> dict:
+        """Synchronously send an HTTP POST request.
+
+        Args:
+            endpoint (str): Endpoint or API route to request.
+            payload (dict | None): JSON request body to send.
+            params (dict | None): Query-string parameters.
+            bypass_rate_limiter (bool): Whether to bypass rate limiting.
+
+        Returns:
+            dict: The parsed JSON response returned by the API.
+
+        Raises:
+            APIRouterError: If the request client is not initialized or the
+                network layer fails.
+            APIStatusError: If the API responds with a non-2xx HTTP status.
+            APITimeout: If the request exceeds the configured timeout.
+        """
+        return bridge_run(
+            self.async_post(
+                endpoint,
+                payload=payload,
+                params=params,
+                bypass_rate_limiter=bypass_rate_limiter,
+            )
+        )
+
+    async def async_put(
         self,
         endpoint: str,
         payload: dict | None = None,
@@ -331,6 +450,39 @@ class APIRouterTemplate:
             APIStatusError: If the API responds with a non-2xx HTTP status.
             APITimeout: If the request exceeds the configured timeout.
         """
-        return await self._request(
+        return await self._async_request(
             "PUT", endpoint, payload, params, bypass_rate_limiter=bypass_rate_limiter
+        )
+
+    def put(
+        self,
+        endpoint: str,
+        payload: dict | None = None,
+        params: dict | None = None,
+        bypass_rate_limiter: bool = False,
+    ) -> dict:
+        """Synchronously send an HTTP PUT request.
+
+        Args:
+            endpoint (str): Endpoint or API route to request.
+            payload (dict | None): JSON request body to send.
+            params (dict | None): Query-string parameters.
+            bypass_rate_limiter (bool): Whether to bypass rate limiting.
+
+        Returns:
+            dict: The parsed JSON response returned by the API.
+
+        Raises:
+            APIRouterError: If the request client is not initialized or the
+                network layer fails.
+            APIStatusError: If the API responds with a non-2xx HTTP status.
+            APITimeout: If the request exceeds the configured timeout.
+        """
+        return bridge_run(
+            self.async_put(
+                endpoint,
+                payload=payload,
+                params=params,
+                bypass_rate_limiter=bypass_rate_limiter,
+            )
         )
