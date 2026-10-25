@@ -1,5 +1,6 @@
 import asyncio
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -98,7 +99,7 @@ def test_request_initializes_client_when_missing(monkeypatch):
     monkeypatch.setattr(api, "create_httpx_client", create_client)
 
     async def exercise():
-        result = await api._request("GET", "/health")
+        result = await api._async_request("GET", "/health")
         client = api.client
         await api.close()
         return result, client
@@ -124,7 +125,7 @@ def test_oauth_auth_runs_before_request_and_updates_default_headers():
     async def exercise():
         api.client = _make_async_client(handler, headers=api.default_headers)
         try:
-            result = await api._request("GET", "/health")
+            result = await api._async_request("GET", "/health")
         finally:
             await api.client.aclose()
 
@@ -157,7 +158,7 @@ def test_header_override_merges_with_client_defaults():
             },
         )
         try:
-            result = await api._request(
+            result = await api._async_request(
                 "GET",
                 "/health",
                 headers_override={
@@ -211,7 +212,7 @@ def test_http_method_wrappers_forward_request_data(
     async def exercise():
         api.client = _make_async_client(handler)
         try:
-            result = await getattr(api, wrapper)("/resource", **kwargs)
+            result = await getattr(api, f"async_{wrapper}")("/resource", **kwargs)
         finally:
             await api.client.aclose()
 
@@ -226,6 +227,61 @@ def test_http_method_wrappers_forward_request_data(
     assert api.rate_limiter.request_count == 1
 
 
+@pytest.mark.parametrize(
+    ("method", "request_method"),
+    [("get", "GET"), ("post", "POST"), ("put", "PUT")],
+)
+def test_sync_http_method_wrappers_delegate_to_async_methods(
+    method, request_method, monkeypatch
+):
+    api = _make_api()
+    async_method = AsyncMock(return_value={"ok": True})
+    monkeypatch.setattr(api, f"async_{method}", async_method)
+    monkeypatch.setattr(api_template_module, "bridge_run", lambda coro: asyncio.run(coro))
+
+    result = getattr(api, method)(
+        "/resource",
+        payload={"key": "value"},
+        params={"limit": 10},
+        bypass_rate_limiter=True,
+    )
+
+    assert result == {"ok": True}
+    async_method.assert_awaited_once_with(
+        "/resource",
+        payload={"key": "value"},
+        params={"limit": 10},
+        bypass_rate_limiter=True,
+    )
+
+
+def test_sync_request_wrapper_delegates_to_async_request(monkeypatch):
+    api = _make_api()
+    async_request = AsyncMock(return_value={"ok": True})
+    monkeypatch.setattr(api, "_async_request", async_request)
+    monkeypatch.setattr(api_template_module, "bridge_run", lambda coro: asyncio.run(coro))
+    headers = {"Authorization": "test-token"}
+
+    result = api._request(
+        "PATCH",
+        "/resource",
+        {"key": "value"},
+        {"limit": 10},
+        headers,
+        True,
+    )
+
+    assert result == {"ok": True}
+    async_request.assert_awaited_once_with(
+        "PATCH",
+        "/resource",
+        {"key": "value"},
+        {"limit": 10},
+        headers,
+        True,
+    )
+
+
 def test_bypass_rate_limiter_sends_request_without_acquiring_quota():
     api = _make_api(oauth=True)
     requests = []
@@ -237,7 +293,7 @@ def test_bypass_rate_limiter_sends_request_without_acquiring_quota():
     async def exercise():
         api.client = _make_async_client(handler)
         try:
-            result = await api.get("/health", bypass_rate_limiter=True)
+            result = await api.async_get("/health", bypass_rate_limiter=True)
         finally:
             await api.client.aclose()
 
@@ -262,7 +318,7 @@ def test_rate_limiter_failure_prevents_outbound_request():
         api.client = _make_async_client(handler)
         try:
             with pytest.raises(RateLimiterError, match="quota exceeded"):
-                await api.get("/health")
+                await api.async_get("/health")
         finally:
             await api.client.aclose()
 
@@ -286,7 +342,7 @@ def test_http_status_error_is_wrapped_with_response_and_request_context():
         api.client = _make_async_client(handler)
         try:
             with pytest.raises(APIStatusError) as exc_info:
-                await api.post("/status", payload={"sent": True})
+                await api.async_post("/status", payload={"sent": True})
         finally:
             await api.client.aclose()
 
@@ -310,7 +366,7 @@ def test_timeout_error_raises_api_timeout():
         api.client = _make_async_client(handler)
         try:
             with pytest.raises(APITimeout):
-                await api.get("/slow")
+                await api.async_get("/slow")
         finally:
             await api.client.aclose()
 
@@ -327,7 +383,7 @@ def test_request_error_raises_api_router_error():
         api.client = _make_async_client(handler)
         try:
             with pytest.raises(APIRouterError):
-                await api.get("/fail")
+                await api.async_get("/fail")
         finally:
             await api.client.aclose()
 
@@ -344,7 +400,7 @@ def test_invalid_json_response_propagates_decode_error():
         api.client = _make_async_client(handler)
         try:
             with pytest.raises(ValueError):
-                await api.get("/invalid-json")
+                await api.async_get("/invalid-json")
         finally:
             await api.client.aclose()
 
@@ -354,6 +410,20 @@ def test_invalid_json_response_propagates_decode_error():
 def test_record_usage_awaits_rate_limiter_recording():
     api = _make_api()
 
-    bridge_run(api.record_usage(4))
+    bridge_run(api.async_record_usage(4))
 
     assert api.rate_limiter.usage_tokens == [4]
+
+
+def test_sync_record_usage_delegates_to_async_method(monkeypatch):
+    api = _make_api()
+    async_record_usage = AsyncMock(return_value=None)
+    monkeypatch.setattr(api, "async_record_usage", async_record_usage)
+    monkeypatch.setattr(
+        api_template_module, "bridge_run", lambda coro: asyncio.run(coro)
+    )
+
+    result = api.record_usage(4)
+
+    assert result is None
+    async_record_usage.assert_awaited_once_with(4)
