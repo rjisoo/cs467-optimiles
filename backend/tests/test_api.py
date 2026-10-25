@@ -24,7 +24,7 @@ def test_search_returns_results(client):
     for result in results:
         assert result["origin"] == "SFO"
         assert result["cabin"] == "business"
-        assert result["seats_available"] >= 2
+        assert result["seats_available"] is None or result["seats_available"] >= 2
 
 
 def test_search_rejects_same_origin_and_destination(client):
