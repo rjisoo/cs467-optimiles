@@ -38,30 +38,31 @@ class RateLimiter:
         psl_counter: Available token count for loose per-second limiting.
         psl_interval: Per-second limiter interval, in seconds.
 
-    Class variables
-    default_config is a template configuration file that contains:
-        api quota information and current remaining quota information (Only for Daily quota)
-    Structure:
-        name: api name
-        settings: rate limiter settings
-            backup_interval: the interval between periodic backups
-        limit_per_month: Monthly rate limit configuration
-            "enabled": whether this rate limit is enabled
-        limit_per_day: Daily rate limit configuration
-            "enabled": whether this rate limit is enabled
-            max_requests: Maximum requests allowed in a day
-            current_quota: Current day usage
-            current_day: The last day this api was managed
-            reset_time: reset time of the daily quota
-            soft_entry: If the rate limiter would permit tries after the quota is exceeded
-        limit_per_second: Per-second rate limiting
-            "enabled": whether this rate limit is enabled
-            max_requests: the maximum requests allowed in a second
-            mode: Uses strict or loose mode
-                    Strict Mode: evenly space requests in a second, garenteed PSL enforcement
-                    Loose mode: Use token bucket to regulate requests, which may exceed PSL rule temporarily during heavy traffic,
-                    however long-term request frequency should average equal or below the PSL limit
-        usage: tracks the daily usage of this api, the subsidiery structure is a dictionary consists of "YYYY-MM-DD": {Daily Usage in tokens}
+    Class variables:
+
+    default_config: This is a template configuration file that contains:
+    api quota information and current remaining quota information (Only tracks daily usage)
+        Structure:
+            name: api name
+            settings: rate limiter settings
+                backup_interval: the interval between periodic backups
+            limit_per_month: Monthly rate limit configuration
+                "enabled": whether this rate limit is enabled
+            limit_per_day: Daily rate limit configuration
+                "enabled": whether this rate limit is enabled
+                max_requests: Maximum requests allowed in a day
+                current_quota: Current day usage
+                current_day: The last day this api was managed
+                reset_time: reset time of the daily quota
+                soft_entry: If the rate limiter would permit tries after the quota is exceeded (Not implemented)
+            limit_per_second: Per-second rate limiting
+                "enabled": whether this rate limit is enabled
+                max_requests: the maximum requests allowed in a second
+                mode: Uses strict or loose mode
+                        Strict Mode: evenly space requests in a second, garenteed PSL enforcement
+                        Loose mode: Use token bucket to regulate requests, which may exceed PSL rule temporarily during burst traffic,
+                        however long-term request frequency should average equal or below the PSL limit
+            usage: tracks the daily usage of this api, the subsidiery structure is a dictionary consists of "YYYY-MM-DD": {Daily Usage in tokens}
 
     Notes:
         Call request method before submitting an API request which does daily
