@@ -33,21 +33,23 @@ function TripEntry({ draft, onDraftChange }: TripEntryProps) {
       const panel = textarea?.closest<HTMLElement>('.entry-choices')
       const workspace = textarea?.closest<HTMLElement>('.workspace')
       const intro = workspace?.querySelector<HTMLElement>('.entry-intro')
-      if (!textarea || !panel || !workspace || !intro) return
+      if (!textarea || !panel) return
 
       const previousScroll = textarea.scrollTop
-      textarea.style.height = '80px'
-      let maxHeight = 224
+      const textareaStyle = getComputedStyle(textarea)
+      const minHeight = parseFloat(textareaStyle.minHeight) || 80
+      let maxHeight = parseFloat(textareaStyle.maxHeight) || 224
+      textarea.style.height = `${minHeight}px`
       // Reserve room for the full form and balanced outer padding on desktop.
-      if (window.matchMedia('(min-width: 48.001rem)').matches) {
+      if (workspace && intro && window.matchMedia('(width > 56.25rem)').matches) {
         const style = getComputedStyle(workspace)
         const fixedContent = intro.offsetHeight + parseFloat(getComputedStyle(intro).marginBottom)
           + panel.offsetHeight - textarea.offsetHeight
         maxHeight = Math.min(maxHeight, window.innerHeight - fixedContent
           - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom))
       }
-      maxHeight = Math.max(80, maxHeight)
-      const height = Math.min(Math.max(80, textarea.scrollHeight + 2), maxHeight)
+      maxHeight = Math.max(minHeight, maxHeight)
+      const height = Math.min(Math.max(minHeight, textarea.scrollHeight + 2), maxHeight)
       textarea.style.height = `${height}px`
       textarea.style.overflowY = textarea.scrollHeight > height - 2 ? 'auto' : 'hidden'
       textarea.scrollTop = document.activeElement === textarea && textarea.selectionEnd === textarea.value.length
@@ -55,8 +57,21 @@ function TripEntry({ draft, onDraftChange }: TripEntryProps) {
     }
 
     resizeComposer()
+    const panel = messageRef.current?.closest<HTMLElement>('.entry-choices')
+    let previousWidth: number | undefined
+    const observer = new ResizeObserver(([entry]) => {
+      // Height changes come from this effect; react only to container width changes.
+      const width = entry.contentRect.width
+      if (width === previousWidth) return
+      previousWidth = width
+      resizeComposer()
+    })
+    if (panel) observer.observe(panel)
     window.addEventListener('resize', resizeComposer)
-    return () => window.removeEventListener('resize', resizeComposer)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', resizeComposer)
+    }
   }, [draft.message])
 
   function toggleCabin(cabin: string) {

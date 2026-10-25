@@ -16,7 +16,7 @@ npm ci
 npm run dev
 ```
 
-Open the local URL printed by Vite; press Ctrl+C to stop. The current starter needs no environment file or backend service. Backend connection details remain pending team agreement.
+Open the local URL printed by Vite; press Ctrl+C to stop. The current static frontend needs no environment file or backend service. Backend connection details remain pending team agreement.
 
 Run these commands from `frontend/`:
 
@@ -61,11 +61,9 @@ Place tests beside the code they exercise, using `*.test.ts` or `*.test.tsx`. Im
 
 `src/test-setup.ts` loads the DOM matchers, cleans up rendered components after each test, and stubs `matchMedia` for the default desktop navigation plus `ResizeObserver` for Radix controls. Override these stubs in tests that need different browser behavior; global stubs are restored after each test. JSDOM does not perform browser layout; responsive sizing and visual checks still need a browser.
 
-The initial suite covers independent cabin selection, clearing the trip draft with focus restoration, and opening/dismissing award help with the keyboard. It needs no backend service.
+The suite covers independent cabin selection, clearing the trip draft with focus restoration, responsive navigation, keyboard help, and static award-value explanations. It needs no backend service.
 
-Verified on October 23, 2026 with the Node/npm versions above: ESLint passed with no warnings, all three tests passed, TypeScript and the production build passed, and the dev server served the page and app module successfully.
-
-`npm audit` reports one vulnerable package, the existing team-pinned Vite **8.3.2**, with advisories up to high severity. npm lists **8.3.5** as the fix; updating that shared pin remains a separate follow-up.
+The last recorded `npm audit` found advisories up to high severity in the team-pinned Vite **8.3.2** and listed **8.3.5** as the fix. Recheck advisories before the separate dependency-update follow-up.
 
 ## Icons
 
@@ -77,11 +75,20 @@ UI icons use [Lucide React](https://lucide.dev/guide/react), with named imports 
 
 - `App.tsx` owns the in-memory trip draft and reset action.
 - `AppNavigation.tsx` handles the responsive navigation disclosure and breakpoint focus handoff.
-- `AwardHelp.tsx` uses the shared Dialog for focus trapping, dismissal, and focus restoration.
-- `TripEntry.tsx` composes shared controls and keeps the growing textarea within the available desktop height.
-- `src/index.css` defines the original navy Premium theme, global focus treatment, and Radix state variants. Existing layout color names alias those same theme tokens.
-- `App.css` and `TripEntry.css` contain screen layout and context styles. Shared control defaults belong in `components/ui/`, including 44px default controls and readable disabled states.
+- `AwardHelp.tsx` uses the shared Dialog; `AwardHelp.css` owns its styles.
+- `TripEntry.tsx` owns the form and growing composer.
+- `src/index.css` defines the theme, focus styles and Radix variants, and imports responsive sizing.
+- `App.css` owns the shell; component stylesheets own their layouts. Shared control defaults belong in `components/ui/`.
 
 Import shared controls with `@/components/ui/...`. `components.json` records the registry style and aliases; Vite and TypeScript resolve `@/` to `src/`. Add only components needed by the current screen. Review generated updates before replacing local defaults, especially focus, sizing, disabled colors, and textarea sizing. Dependency changes follow the repository's manual setup policy.
 
 The interface remains a static preview: no search or prompt processing, no persistence, and no backend calls. Cabin choices are independent, and New trip clears the draft. Future result panels can reuse the same Card, Badge, Button, Separator, and theme tokens.
+
+## Responsive layout
+
+Preview routes: `/` (entry) and `/?preview=awards` (static results).
+
+- Reuse [responsive.css](src/styles/responsive.css) for shared typography, spacing, controls and dialogs.
+- Keep component layout rules local; use container queries when components can be embedded in narrower spaces.
+- [award-sizing.css](src/components/award-sizing.css) contains the compact award-specific overrides.
+- Keep navigation breakpoints aligned in `App.css` and `AppNavigation.tsx`. Check both pages at mobile/desktop widths, enlarged text and keyboard navigation after shared-style changes.

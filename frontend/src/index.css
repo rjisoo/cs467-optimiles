@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./styles/responsive.css";
+@import "./components/award-sizing.css";
 
 /* Radix state attributes used by the shadcn/ui components. */
 @custom-variant data-open (&[data-state="open"]);
@@ -75,17 +77,16 @@
   --color-nav-border: #6b92c7;
   --color-brand: #2a60ce;
   --color-focus: var(--ring);
+  --color-user-bubble: #dfeaff;
+  --color-value-good: #146c43;
+  --color-value-good-surface: #e9f7ef;
+  --color-value-fair: #805500;
+  --color-value-fair-surface: #fff4d6;
+  --color-value-bad-surface: #fef0ee;
   --shadow-dialog: 0 24px 80px rgb(23 43 77 / 24%);
-  --space-1: 0.5rem;
-  --space-2: 1rem;
-  --space-3: 1.5rem;
-  --space-4: 2rem;
-  --space-5: 3rem;
-  --radius: 1rem;
-  --radius-control: 0.5rem;
 
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 16px;
+  font-size: 100%;
   line-height: 1.45;
   color-scheme: light;
   color: var(--color-text);
@@ -99,6 +100,7 @@
 
 body {
   margin: 0;
+  font-size: var(--font-body);
 }
 
 button {
@@ -121,7 +123,7 @@ p {
 
 h1 {
   font-family: Georgia, 'Times New Roman', serif;
-  font-size: clamp(1.5rem, 2.7vw, 2rem);
+  font-size: var(--font-title);
   line-height: 1.2;
   letter-spacing: -0.7px;
   font-weight: 400;
@@ -138,8 +140,8 @@ h1 {
 .section-icon {
   display: inline-grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: 2rem;
+  height: 2rem;
   color: var(--color-primary);
   background: var(--color-accent-surface);
   border-radius: var(--radius-control);

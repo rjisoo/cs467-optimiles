@@ -1,6 +1,7 @@
 .entry-choices {
+  container: trip-entry / inline-size;
   display: grid;
-  grid-template-rows: auto 30px auto;
+  grid-template-rows: auto auto auto;
   gap: var(--space-3);
   padding: var(--space-3);
   background: var(--color-surface);
@@ -13,19 +14,21 @@
 .entry-card h2 {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin: 0 0 12px;
-  font-size: 1.125rem;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-section);
   font-weight: 600;
   line-height: 1.3;
   letter-spacing: -0.3px;
 }
 
 .entry-card .section-icon {
-  width: 18px;
-  height: 18px;
+  width: 1em;
+  height: 1em;
   background: transparent;
 }
+
+.entry-card .section-icon .icon { width: 1em; height: 1em; }
 
 .details-entry h2 { margin-bottom: 4px; }
 
@@ -33,13 +36,13 @@
 .cabin-choices legend span,
 .form-footer > span {
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--font-small);
   font-weight: 400;
 }
 
 .entry-card label,
 .entry-card legend {
-  font-size: 12px;
+  font-size: var(--font-small);
   font-weight: 600;
 }
 
@@ -47,10 +50,11 @@
 
 .composer-row textarea {
   display: block;
-  min-height: 80px;
-  padding: 14px 72px 14px 16px;
+  min-height: var(--composer-min-height);
+  max-height: var(--composer-max-height);
+  padding: var(--space-2) calc(var(--control-min-height) + var(--space-3)) var(--space-2) var(--space-2);
   border-radius: var(--radius);
-  line-height: 24px;
+  line-height: 1.5;
   resize: none;
   overflow-y: hidden;
 }
@@ -63,7 +67,7 @@
 .entry-divider {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-2);
   color: var(--color-text-muted);
 }
 
@@ -79,7 +83,7 @@
   place-items: center;
   width: 30px;
   height: 30px;
-  font-size: 11px;
+  font-size: var(--font-caption);
   border: 1px solid var(--color-border);
   border-radius: 50%;
 }
@@ -87,7 +91,7 @@
 .trip-fields {
   display: grid;
   gap: var(--space-2);
-  margin-top: 12px;
+  margin-top: var(--space-2);
 }
 
 .route-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -95,7 +99,7 @@
 
 .trip-fields label {
   display: grid;
-  gap: 6px;
+  gap: var(--space-1);
   min-width: 0;
   line-height: 1.45;
 }
@@ -130,17 +134,17 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  min-height: 44px;
+  min-height: var(--control-min-height);
   padding: 8px 11px;
   border: 1px solid var(--color-control-border);
   border-radius: var(--radius-control);
-  font-size: 12px;
+  font-size: var(--font-small);
   font-weight: 500;
 }
 
 .cabin-options [data-slot="checkbox"] {
-  width: 16px;
-  height: 16px;
+  width: 1rem;
+  height: 1rem;
   margin: 0;
 }
 
@@ -178,9 +182,9 @@
   justify-content: center;
   gap: var(--space-1);
   min-width: 148px;
-  min-height: 44px;
+  min-height: var(--control-min-height);
   padding: 0 14px;
-  font-size: 13px;
+  font-size: var(--font-control);
   font-weight: 600;
   color: var(--color-text-muted);
   background: var(--color-disabled);
@@ -190,11 +194,11 @@
 
 .send-request {
   position: absolute;
-  right: 12px;
-  bottom: 12px;
-  width: 44px;
-  min-width: 44px;
-  height: 44px;
+  right: var(--space-2);
+  bottom: var(--space-2);
+  width: var(--control-min-height);
+  min-width: var(--control-min-height);
+  height: var(--control-min-height);
   padding: 0;
   border-color: var(--color-border);
   border-radius: 50%;
@@ -202,23 +206,22 @@
 
 .send-request .icon { width: 20px; height: 20px; stroke-width: 2; }
 
-@media (min-width: 1600px) {
-  .entry-choices { padding: var(--space-4); }
-  .trip-fields { margin-top: 18px; }
-  .form-end { margin-top: var(--space-3); }
-}
-
-@media (max-width: 1399px) {
-  .entry-choices { padding: 20px; }
-  .form-end { margin-top: 12px; }
-}
-
-@media (max-width: 60rem) {
-  .form-end { flex-direction: column; gap: 16px; }
+/* Reflow against the form's available width, including when embedded in another page. */
+@container trip-entry (width <= 44rem) {
+  .form-end { flex-direction: column; gap: var(--space-2); }
   .form-footer { align-self: flex-end; }
 }
 
-@media (max-width: 36rem) {
+@container trip-entry (width <= 36rem) {
   .trip-fields { grid-template-columns: minmax(0, 1fr); }
   .form-footer { align-items: flex-start; align-self: stretch; }
+}
+
+/* At very narrow widths or enlarged text, reserve a bottom row for Send. */
+@container trip-entry (width <= 12rem) {
+  .composer-row textarea {
+    min-height: calc(2 * var(--control-min-height) + 3 * var(--space-2));
+    padding-inline: var(--space-2);
+    padding-bottom: calc(var(--control-min-height) + 2 * var(--space-2));
+  }
 }
