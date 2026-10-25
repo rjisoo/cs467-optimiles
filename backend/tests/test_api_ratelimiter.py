@@ -16,6 +16,7 @@ from backend.ext_api.api_ratelimiter import RateLimiter
 # The following tests was generated with the help of Claude Code, before reviewing and modifications.
 # This transcript backend/citations/GenAI.md entry 02 documents the interaction leading to the code
 
+
 def make_config(**overrides):
     config = copy.deepcopy(RateLimiter.default_config)
     config["limit_per_second"]["mode"] = "strict"
@@ -38,7 +39,6 @@ def make_limiter(tmp_path: Path, **overrides) -> RateLimiter:
 
 def run(coro):
     return asyncio.run(coro)
-
 
 
 def test_generate_default_config_writes_default_config(tmp_path: Path):
@@ -68,7 +68,6 @@ def test_missing_config_generates_default_then_reraises(tmp_path: Path):
         ("limit_per_second", {"mode": "burst"}),
     ],
 )
-
 def test_invalid_config_values_raise_rate_limiter_error(
     tmp_path: Path, section: str, values: dict
 ):
@@ -142,6 +141,7 @@ def test_backup_loop_saves_when_cancelled(tmp_path: Path, monkeypatch):
 
     assert saves == [True]
 
+
 def test_record_usage_tracks_tokens_by_day(tmp_path: Path, monkeypatch):
     limiter = make_limiter(tmp_path)
     now = [datetime(2025, 4, 3, tzinfo=timezone.utc)]
@@ -165,6 +165,7 @@ def test_record_usage_tracks_tokens_by_day(tmp_path: Path, monkeypatch):
         "2025-04-03": 4,
         "2025-04-04": 2,
     }
+
 
 def test_daily_quota_increments_until_max_then_raises(tmp_path: Path, monkeypatch):
     limiter = make_limiter(
@@ -244,9 +245,10 @@ def test_concurrent_daily_requests_cannot_exceed_quota(tmp_path: Path, monkeypat
     results = run(exercise())
 
     assert sum(result is None for result in results) == 3
-    assert sum(
-        isinstance(result, RateLimiterDailyQuotaExceeded) for result in results
-    ) == 7
+    assert (
+        sum(isinstance(result, RateLimiterDailyQuotaExceeded) for result in results)
+        == 7
+    )
     assert limiter.config["limit_per_day"]["current_quota"] == 3
 
 
@@ -331,18 +333,14 @@ def test_concurrent_loose_requests_cannot_consume_same_token(
     monkeypatch.setattr(rate_limiter_module.time, "time", lambda: 100.0)
 
     async def exercise():
-        return await asyncio.gather(
-            *(limiter._check_psl_loose() for _ in range(10))
-        )
+        return await asyncio.gather(*(limiter._check_psl_loose() for _ in range(10)))
 
     results = run(exercise())
 
     assert sum(results) == 1
 
 
-def test_loose_wait_returns_when_a_token_becomes_available(
-    tmp_path: Path, monkeypatch
-):
+def test_loose_wait_returns_when_a_token_becomes_available(tmp_path: Path, monkeypatch):
     limiter = make_limiter(
         tmp_path,
         limit_per_second={"max_requests": 2, "mode": "loose"},

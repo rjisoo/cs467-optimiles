@@ -34,6 +34,7 @@ class FakeRateLimiter:
     async def close(self):
         pass
 
+
 class DummyAPI(APIRouterTemplate):
     async def _async_auth(self):
         self.default_headers["Authorization"] = "test-token"
@@ -356,4 +357,3 @@ def test_record_usage_awaits_rate_limiter_recording():
     bridge_run(api.record_usage(4))
 
     assert api.rate_limiter.usage_tokens == [4]
-
