@@ -1,10 +1,6 @@
 from .api_template import APIRouterTemplate
 import dotenv
 import os
-import time
-import asyncio
-import dotenv
-from utils import bridge_run
 import logging
 from . import APIRouterError, APIStatusError, APITimeout
 
@@ -14,6 +10,18 @@ dotenv.load_dotenv()
 
 
 class SeatsAeroAPI(APIRouterTemplate):
+    """Seats.Aero API integration
+    Available endpoints:
+    cached_search (async_cached_search)
+    get_trips (async_get_trips),
+    get_routes (async_get_routes),
+    get_destinations (async_get_destinations),
+    get_availability (async_get_availability),
+    get_alerts (async_get_alerts),
+    live_search (async_live_search),
+    refresh_cached_data (async_refresh_cached_data)
+    """
+
     def __init__(
         self,
         timeout: float = 10.0,
@@ -22,15 +30,46 @@ class SeatsAeroAPI(APIRouterTemplate):
         if base_url is None:
             raise APIRouterError("Invalid Base URL")
         super().__init__(api_name="seatsaero", base_url=base_url, oauth=False)
-        search_cache = {}
-        search_cache_example = {
-            "cursor_idxxx": {"ttl": "sometime", "results": ["someresult1", "2"]}
-        }
-        self.cache_lock = asyncio.Lock()
 
     def _auth(self):
         if "Partner-Authorization" not in self.default_headers:
             self.default_headers["Partner-Authorization"] = os.getenv("SEATSAERO_TOKEN")
+
+    async def _async_api_request(self, request) -> dict:
+        """Submit an async API request with shared error handling.
+
+        Records usage after success or an HTTP status error, logs failures, and
+        re-raises request exceptions.
+
+        Args:
+            request: Callable that returns the request awaitable.
+
+        Returns:
+            The decoded API response.
+
+        Raises:
+            APIStatusError: If the API returns a non-success HTTP status.
+            APITimeout: If the request times out.
+            APIRouterError: If the request fails at the router or network layer.
+            Exception: Re-raises any other error raised by the request.
+        """
+        try:
+            result = await request()
+            await self.async_record_usage(1)
+            return result
+        except APIStatusError as e:
+            logger.error("API request failed with status %s", e.status_code)
+            await self.async_record_usage(1)
+            raise
+        except APITimeout:
+            logger.error("API request timed out")
+            raise
+        except APIRouterError:
+            logger.error("API router error")
+            raise
+        except Exception:
+            logger.exception("Unknown API request error")
+            raise
 
     async def async_cached_search(self, params: dict) -> dict:
         """
@@ -38,24 +77,9 @@ class SeatsAeroAPI(APIRouterTemplate):
         params: Dictionary of query parameters for the search.
         return: The response from the API.
         """
-        async with self.cache_lock:
-            try:
-                result = await self.get("/search", params=params)
-                await self.record_usage(1)
-                return result
-            except APIStatusError as e:
-                logging.error("Code error: cached_search failed with %s", e.status_code)
-                await self.record_usage(1)
-                raise
-            except APITimeout:
-                logging.error("Timeout error: cached_search api timeout")
-                raise
-            except APIRouterError:
-                logging.error("API Router Error: cached_search endpoint")
-                raise
-            except Exception:
-                logger.exception("Unknown Error: cached_search endpoint")
-                raise
+        return await self._async_api_request(
+            lambda: self.async_get("/search", params=params)
+        )
 
     async def async_get_trips(self, trip_id, params={}) -> dict:
         """
@@ -64,48 +88,18 @@ class SeatsAeroAPI(APIRouterTemplate):
         params: Dictionary of query parameters for the search.
         :return: The response from the API.
         """
-        async with self.cache_lock:
-            try:
-                result = await self.get(f"/trips/{trip_id}", params=params)
-                await self.record_usage(1)
-                return result
-            except APIStatusError as e:
-                logger.error("Code error: get_trips failed with %s", e.status_code)
-                await self.record_usage(1)
-                raise
-            except APITimeout:
-                logger.error("Timeout error: get_trips api timeout")
-                raise
-            except APIRouterError:
-                logger.error("API Router Error: get_trips endpoint")
-                raise
-            except Exception:
-                logger.exception("Unknown Error: get_trips endpoint")
-                raise
+        return await self._async_api_request(
+            lambda: self.async_get(f"/trips/{trip_id}", params=params)
+        )
 
     async def async_get_routes(self, params: dict) -> dict:
         """
         Submit a request to the Get Routes endpoint.
         params: Dictionary of query parameters for the search.
         return: The response from the API."""
-        async with self.cache_lock:
-            try:
-                result = await self.get("/routes", params=params)
-                await self.record_usage(1)
-                return result
-            except APIStatusError as e:
-                logger.error("Code error: get_routes failed with %s", e.status_code)
-                await self.record_usage(1)
-                raise
-            except APITimeout:
-                logger.error("Timeout error: get_routes api timeout")
-                raise
-            except APIRouterError:
-                logger.error("API Router Error: get_routes endpoint")
-                raise
-            except Exception:
-                logger.exception("Unknown Error: get_routes endpoint")
-                raise
+        return await self._async_api_request(
+            lambda: self.async_get("/routes", params=params)
+        )
 
     async def async_get_destinations(self, params: dict) -> dict:
         """
@@ -113,26 +107,9 @@ class SeatsAeroAPI(APIRouterTemplate):
         params: Dictionary of query parameters for the search.
         return: The response from the API.
         """
-        async with self.cache_lock:
-            try:
-                result = await self.get("/destinations", params=params)
-                await self.record_usage(1)
-                return result
-            except APIStatusError as e:
-                logger.error(
-                    "Code error: get_destinations failed with %s", e.status_code
-                )
-                await self.record_usage(1)
-                raise
-            except APITimeout:
-                logger.error("Timeout error: get_destinations api timeout")
-                raise
-            except APIRouterError:
-                logger.error("API Router Error: get_destinations endpoint")
-                raise
-            except Exception:
-                logger.exception("Unknown Error: get_destinations endpoint")
-                raise
+        return await self._async_api_request(
+            lambda: self.async_get("/destinations", params=params)
+        )
 
     async def async_get_availability(self, params: dict) -> dict:
         """
@@ -140,153 +117,127 @@ class SeatsAeroAPI(APIRouterTemplate):
         params: Dictionary of query parameters for the search.
         return: The response from the API.
         """
-        async with self.cache_lock:
-            try:
-                result = await self.get("/availability", params=params)
-                await self.record_usage(1)
-                return result
-            except APIStatusError as e:
-                logger.error(
-                    "Code error: get_availability failed with %s", e.status_code
-                )
-                await self.record_usage(1)
-                raise
-            except APITimeout:
-                logger.error("Timeout error: get_availability api timeout")
-                raise
-            except APIRouterError:
-                logger.error("API Router Error: get_availability endpoint")
-                raise
-            except Exception:
-                logger.exception("Unknown Error: get_availability endpoint")
-                raise
+        return await self._async_api_request(
+            lambda: self.async_get("/availability", params=params)
+        )
 
     async def async_get_alerts(self) -> dict:
         """
         Submit a request to the Get Alerts endpoint.
         return: The response from the API.
         """
-        async with self.cache_lock:
-            try:
-                result = await self.get("/alerts")
-                await self.record_usage(1)
-                return result
-            except APIStatusError as e:
-                logger.error("Code error: get_alerts failed with %s", e.status_code)
-                await self.record_usage(1)
-                raise
-            except APITimeout:
-                logger.error("Timeout error: get_alerts api timeout")
-                raise
-            except APIRouterError:
-                logger.error("API Router Error: get_alerts endpoint")
-                raise
-            except Exception:
-                logger.exception("Unknown Error: get_alerts endpoint")
-                raise
+        return await self._async_api_request(lambda: self.async_get("/alerts"))
 
     async def async_live_search(self, payload: dict) -> dict:
         """
         Submit a request to the Live Search endpoint.
         payload: Dictionary of the request body for the search.
         return: The response from the API."""
-        async with self.cache_lock:
-            try:
-                result = await self.post("/live", payload=payload)
-                await self.record_usage(1)
-                return result
-            except APIStatusError as e:
-                logger.error("Code error: live_search failed with %s", e.status_code)
-                await self.record_usage(1)
-                raise
-            except APITimeout:
-                logger.error("Timeout error: live_search api timeout")
-                raise
-            except APIRouterError:
-                logger.error("API Router Error: live_search endpoint")
-                raise
-            except Exception:
-                logger.exception("Unknown Error: live_search endpoint")
-                raise
+        return await self._async_api_request(
+            lambda: self.async_post("/live", payload=payload)
+        )
 
     async def async_refresh_cached_data(self, payload: dict) -> dict:
         """Submit a request to the Refresh Cached Data endpoint.
         payload: Dictionary of the request body for the refresh.
         return: The response from the API.
         """
-        async with self.cache_lock:
-            try:
-                result = await self.post("/refresh", payload=payload)
-                await self.record_usage(1)
-                return result
-            except APIStatusError as e:
-                logger.error(
-                    "Code error: refresh_cached_data failed with %s", e.status_code
-                )
-                await self.record_usage(1)
-                raise
-            except APITimeout:
-                logger.error("Timeout error: refresh_cached_data api timeout")
-                raise
-            except APIRouterError:
-                logger.error("API Router Error: refresh_cached_data endpoint")
-                raise
-            except Exception:
-                logger.exception("Unknown Error: refresh_cached_data endpoint")
-                raise
+        return await self._async_api_request(
+            lambda: self.async_post("/refresh", payload=payload)
+        )
 
-    def cached_search(self, params: dict):
+    def _sync_api_request(self, request) -> dict:
+        """Submit a synchronous API request with shared error handling.
+
+        Register usage with rate limiter after a successful request or an HTTP status error, logs
+        known
+
+        Raises:
+            APIStatusError: If the API returns a non-success HTTP status.
+            APITimeout: If the request times out.
+            APIRouterError: If the request fails at the router or network layer.
+            Exception: Re-raises any other error raised by the request.
+        """
+        try:
+            result = request()
+            self.record_usage(1)
+            return result
+        except APIStatusError as e:
+            logger.error("API request failed with status %s", e.status_code)
+            self.record_usage(1)
+            raise
+        except APITimeout:
+            logger.error("API request timed out")
+            raise
+        except APIRouterError:
+            logger.error("API router error")
+            raise
+        except Exception:
+            logger.exception("Unknown API request error")
+            raise
+
+    def cached_search(self, params: dict) -> dict:
         """Synchronous wrapper for async_cached_search, submit a request to the Cached Search endpoint.
         params: Dictionary of query parameters for the search.
         return: The response from the API.
+        raises APIRouterError, APIStatusError, APITimeout.
         """
-        return bridge_run(self.async_cached_search(params))
+        return self._sync_api_request(lambda: self.get("/search", params=params))
 
-    def get_trips(self, trip_id, params={}):
+    def get_trips(self, trip_id, params={}) -> dict:
         """Synchronous wrapper for async_get_trips, submit a request to the Get Trips endpoint.
         trip_id: The ID of the trip to retrieve (path variable).
         params: Dictionary of query parameters for the search.
         return: The response from the API.
+        raises APIRouterError, APIStatusError, APITimeout.
         """
-        return bridge_run(self.async_get_trips(trip_id, params))
+        return self._sync_api_request(
+            lambda: self.get(f"/trips/{trip_id}", params=params)
+        )
 
-    def get_routes(self, params: dict):
+    def get_routes(self, params: dict) -> dict:
         """Synchronous wrapper for async_get_routes, submit a request to the Get Routes endpoint.
         params: Dictionary of query parameters for the search.
         return: The response from the API.
+        raises APIRouterError, APIStatusError, APITimeout.
         """
-        return bridge_run(self.async_get_routes(params))
+        return self._sync_api_request(lambda: self.get("/routes", params=params))
 
-    def get_destinations(self, params: dict):
+    def get_destinations(self, params: dict) -> dict:
         """Synchronous wrapper for async_get_destinations, submit a request to the Get Destinations endpoint.
         params: Dictionary of query parameters for the search.
         return: The response from the API.
+        raises APIRouterError, APIStatusError, APITimeout.
         """
-        return bridge_run(self.async_get_destinations(params))
+        return self._sync_api_request(lambda: self.get("/destinations", params=params))
 
-    def get_availability(self, params: dict):
+    def get_availability(self, params: dict) -> dict:
         """Synchronous wrapper for async_get_availability, submit a request to the Get Availability endpoint.
         params: Dictionary of query parameters for the search.
         return: The response from the API.
+        raises APIRouterError, APIStatusError, APITimeout.
         """
-        return bridge_run(self.async_get_availability(params))
+        return self._sync_api_request(lambda: self.get("/availability", params=params))
 
-    def get_alerts(self):
+    def get_alerts(self) -> dict:
         """Synchronous wrapper for async_get_alerts, submit a request to the Get Alerts endpoint.
         return: The response from the API.
+        raises APIRouterError, APIStatusError, APITimeout.
         """
-        return bridge_run(self.async_get_alerts())
+        return self._sync_api_request(lambda: self.get("/alerts"))
 
-    def live_search(self, payload: dict):
+    def live_search(self, payload: dict) -> dict:
         """Synchronous wrapper for async_live_search, submit a request to the Live Search endpoint.
         payload: Dictionary of the request body for the search.
         return: The response from the API.
+        raises APIRouterError, APIStatusError, APITimeout.
         """
-        return bridge_run(self.async_live_search(payload))
+        return self._sync_api_request(lambda: self.post("/live", payload=payload))
 
-    def refresh_cached_data(self, payload: dict):
+    def refresh_cached_data(self, payload: dict) -> dict:
         """Synchronous wrapper for async_refresh_cached_data, submit a request to the Refresh Cached Data endpoint.
         payload: Dictionary of the request body for the refresh.
         return: The response from the API.
+        raises APIRouterError, APIStatusError, APITimeout.
         """
-        return bridge_run(self.async_refresh_cached_data(payload))
+        return self._sync_api_request(lambda: self.post("/refresh", payload=payload))
