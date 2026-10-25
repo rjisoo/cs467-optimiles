@@ -1,6 +1,8 @@
 import logging
 import sys
 from logging.config import dictConfig
+from pathlib import Path
+import os 
 
 LOGGING_CONFIG = {
     "version": 1,
@@ -20,7 +22,7 @@ LOGGING_CONFIG = {
         "file": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "default",
-            "filename": "backend/logs/server.log",
+            "filename": os.getenv("BACKEND_LOG_PATH") or "backend/logs/backend.log",
             "maxBytes": 10485760,  # 10 MB
             "backupCount": 5,      # Keep up to 5 backup files
             "encoding": "utf-8",
@@ -50,6 +52,10 @@ LOGGING_CONFIG = {
     },
 }
 
+# Ensure the log file exists
+LOG_PATH = Path(LOGGING_CONFIG["handlers"]["file"]["filename"]).parent
+LOG_PATH.mkdir(parents=True, exist_ok=True)
+LOG_PATH.chmod(0o700)  # Set directory permissions to rwx------ for security
+LOG_PATH.touch(exist_ok=True) 
 
 dictConfig(LOGGING_CONFIG)
-
