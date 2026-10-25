@@ -167,19 +167,36 @@ import dotenv
 import os
 
 class ExampleAPI(APIRouterTemplate):
+    def __init__(self):
+        super().__init__(
+            api_name="ExampleAPI", 
+            base_url="Example.com",
+            headers={"Some":"Header"}, #Or None if no specific header is required
+            oauth= False # True if using OAuth authentication
+        )
+        #Other useful attributes here
+
     async def _auth(self):
+        # Override this method to perform basic auth.
+        # This gets called once at the end of parent construction
         if "Authorization" not in self.default_headers:
             self.default_headers["Authorization"] = os.getenv("SOME_TOKEN")
 
+    #Define other behaviors if needed
+    async def example_method(self, params)
+        result = self.get(endpoint="some_endpoint", params=params)
+        # ... ...
 ```
 
 `main.py`
 ``` python
-import asyncio
+import utils import bridge_run
 from ext_api.example_api import ExampleAPI
-
+from utils import bridge_run
 example_api = ExampleAPI("exampleapi", "example.com/api/")
-results = asyncio.run(example_api.get("/some_endpoint"))
-asyncio.run(example_api.close())
+results = bridge_run(example_api.get("/some_endpoint"))
 ```
 
+## utils.async_bridge module
+### Problem
+The api_template or its sub-classes are desinged to be a singleton object that maintains a persistant httpx client. 

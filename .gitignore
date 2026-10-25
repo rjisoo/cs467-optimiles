@@ -5,7 +5,7 @@
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,windows,macos,linux,vue,react,flask
 
 # Test files
-tests\config\*
+backend/tests/config/*
 
 # Local environment values; keep sanitized examples shareable
 .env

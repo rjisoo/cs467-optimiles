@@ -1,0 +1,37 @@
+{
+    "Amex":{
+        "full_name":"American Express",
+        "point_value":0.01,
+        "logo_url":"https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/American_Express_logo_%282018%29.svg/2560px-American_Express_logo_%282018%29.svg.png"
+    },
+    "Bilt":{
+        "full_name":"Bilt",
+        "point_value":0.01,
+        "logo_url":"https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/American_Express_logo_%282018%29.svg/2560px-American_Express_logo_%282018%29.svg.png"
+    },
+    "Cap1":{
+        "full_name":"Capital One",
+        "point_value":0.01,
+        "logo_url":"https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/American_Express_logo_%282018%29.svg/2560px-American_Express_logo_%282018%29.svg.png"
+    },
+    "Chase":{
+        "full_name":"Chase",
+        "point_value":0.01,
+        "logo_url":"https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/American_Express_logo_%282018%29.svg/2560px-American_Express_logo_%282018%29.svg.png"
+    },
+    "Citi":{
+        "full_name":"Citibank",
+        "point_value":0.01,
+        "logo_url":"https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/American_Express_logo_%282018%29.svg/2560px-American_Express_logo_%282018%29.svg.png"
+    },
+    "Rove":{
+        "full_name":"Rove",
+        "point_value":0.01,
+        "logo_url":"https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/American_Express_logo_%282018%29.svg/2560px-American_Express_logo_%282018%29.svg.png"
+    },
+    "Wells":{
+        "full_name":"Wells Fargo",
+        "point_value":0.01,
+        "logo_url":"https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/American_Express_logo_%282018%29.svg/2560px-American_Express_logo_%282018%29.svg.png"
+    }
+}
