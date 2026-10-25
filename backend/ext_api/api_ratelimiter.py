@@ -10,7 +10,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # Citation: The following docstrings was written with the help of Copilot.
-# This transcript backend/citations/GenAI.md entry 01 documents the GenAI interaction that led to my writing
+# This transcript backend/docs/GenAI.md entry 01 documents the GenAI interaction that led to my writing
 
 
 class RateLimiter:
