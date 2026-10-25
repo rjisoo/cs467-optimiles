@@ -9,8 +9,10 @@ from backend.ext_api import (
     APIRouterError,
     APIStatusError,
     APITimeout,
-    APIRouterTemplate,
 )
+from backend.ext_api.api_template import APIRouterTemplate
+from utils import bridge_run
+
 from backend.ext_api.api_exceptions import RateLimiterError
 
 
@@ -78,7 +80,7 @@ def test_context_manager_initializes_and_closes_client():
         assert client.is_closed
         assert api.client is None
 
-    asyncio.run(exercise())
+    bridge_run(exercise())
 
 
 def test_request_initializes_client_when_missing(monkeypatch):
@@ -100,7 +102,7 @@ def test_request_initializes_client_when_missing(monkeypatch):
         await api.close()
         return result, client
 
-    result, client = asyncio.run(exercise())
+    result, client = bridge_run(exercise())
 
     assert result == {"ok": True}
     assert len(requests) == 1
@@ -127,7 +129,7 @@ def test_oauth_auth_runs_before_request_and_updates_default_headers():
 
         assert result == {"status": "ok"}
 
-    asyncio.run(exercise())
+    bridge_run(exercise())
 
     assert requests[0].headers["Authorization"] == "test-token"
     assert requests[0].headers["X-Trace"] == "base"
@@ -167,7 +169,7 @@ def test_header_override_merges_with_client_defaults():
 
         assert result == {"status": "ok"}
 
-    asyncio.run(exercise())
+    bridge_run(exercise())
 
     headers = requests[0].headers
     assert headers["Authorization"] == "oauth-override"
@@ -214,7 +216,7 @@ def test_http_method_wrappers_forward_request_data(
 
         assert result == {"method": method}
 
-    asyncio.run(exercise())
+    bridge_run(exercise())
 
     assert requests[0].method == method
     assert requests[0].url.path == "/resource"
@@ -240,7 +242,7 @@ def test_bypass_rate_limiter_sends_request_without_acquiring_quota():
 
         assert result == {"ok": True}
 
-    asyncio.run(exercise())
+    bridge_run(exercise())
 
     assert len(requests) == 1
     assert api.rate_limiter.request_count == 0
@@ -263,7 +265,7 @@ def test_rate_limiter_failure_prevents_outbound_request():
         finally:
             await api.client.aclose()
 
-    asyncio.run(exercise())
+    bridge_run(exercise())
 
     assert requests == []
     assert api.rate_limiter.request_count == 1
@@ -294,7 +296,7 @@ def test_http_status_error_is_wrapped_with_response_and_request_context():
         assert error.request_body == {"sent": True}
         assert '"error":"bad"' in error.response_body
 
-    asyncio.run(exercise())
+    bridge_run(exercise())
 
 
 def test_timeout_error_raises_api_timeout():
@@ -311,7 +313,7 @@ def test_timeout_error_raises_api_timeout():
         finally:
             await api.client.aclose()
 
-    asyncio.run(exercise())
+    bridge_run(exercise())
 
 
 def test_request_error_raises_api_router_error():
@@ -328,7 +330,7 @@ def test_request_error_raises_api_router_error():
         finally:
             await api.client.aclose()
 
-    asyncio.run(exercise())
+    bridge_run(exercise())
 
 
 def test_invalid_json_response_propagates_decode_error():
@@ -345,12 +347,13 @@ def test_invalid_json_response_propagates_decode_error():
         finally:
             await api.client.aclose()
 
-    asyncio.run(exercise())
+    bridge_run(exercise())
 
 
 def test_record_usage_awaits_rate_limiter_recording():
     api = _make_api()
 
-    asyncio.run(api.record_usage(4))
+    bridge_run(api.record_usage(4))
 
     assert api.rate_limiter.usage_tokens == [4]
+
