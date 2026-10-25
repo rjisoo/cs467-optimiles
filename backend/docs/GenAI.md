@@ -694,3 +694,175 @@ Updated `_request` so an explicitly provided `headers_override` replaces the cli
 
 Both focused header tests pass. The full API-template suite reports **13 passed, 3 failed**; the remaining failures are the previously identified POST/PUT payload forwarding and unawaited usage-recording issues. No fix was made for those.
 
+# 04
+User: I want to refactor methods in api_template.py, the async requests and get methods etc refactor to be async_{method name}, and add a sync method to replace the original method. I have an example ready for the _request method and _async_request
+
+Copilot: Read skill [python-fact-grounded-coding]()
+Completed with input: {"skill":"python-fact-grounded-coding"}
+
+Ask User
+Completed with input: {
+  "message": "I can do that refactor. I don't see the `_request` / `_async_request` example in your message or the tagged file context. Where should I get the example from?",
+  "requestedSchema": {
+    "properties": {
+      "example_location": {
+        "type": "string",
+        "title": "Example location",
+        "description": "Paste the example or give me the file/selection where your `_request` and `_async_request` example is available."
+      }
+    }
+  }
+}
+Tool execution failed
+
+User: backend\ext_api\api_template.py under #sym:APIRouterTemplate 
+
+Copilot: Read [](), lines 1 to 210
+Completed with input: {
+  "path": "D:\\OSU\\cs467-optimiles\\backend\\ext_api\\api_template.py",
+  "view_range": [
+    1,
+    210
+  ]
+}
+
+Read [](), lines 210 to 390
+Completed with input: {
+  "path": "D:\\OSU\\cs467-optimiles\\backend\\ext_api\\api_template.py",
+  "view_range": [
+    210,
+    390
+  ]
+}
+
+Ran terminal command: git --no-pager diff -- backend/ext_api/api_template.py; git status --short
+
+Search for `\.(_request|get|post|put|record_usage|save_rate_limiter_config|close|init_htt...`
+
+Search for `class .*APIRouterTemplate|async def (get|post|put|_request)|def (get|post|put...`
+
+Ask User
+Completed with input: {
+  "message": "I found your `_request`/`_async_request` example in `APIRouterTemplate`. Should I apply that sync/async naming pattern to the HTTP request API only (`get`, `post`, `put`, keeping lifecycle and rate-limiter methods async), or to every async method in the class as well? The broader option would also change client lifecycle/auth methods and requires updating their callers.",
+  "requestedSchema": {
+    "properties": {
+      "scope": {
+        "type": "string",
+        "title": "Refactor scope",
+        "oneOf": [
+          {
+            "const": "http",
+            "title": "HTTP requests only — _request/get/post/put (recommended)"
+          },
+          {
+            "const": "all",
+            "title": "All async methods, including lifecycle/auth/rate-limiter methods"
+          }
+        ],
+        "default": "http"
+      }
+    }
+  }
+}
+
+Read [](), lines 1 to 190
+Completed with input: {
+  "path": "D:\\OSU\\cs467-optimiles\\backend\\tests\\test_api_template.py",
+  "view_range": [
+    1,
+    190
+  ]
+}
+
+Read [](), lines 190 to 380
+Completed with input: {
+  "path": "D:\\OSU\\cs467-optimiles\\backend\\tests\\test_api_template.py",
+  "view_range": [
+    190,
+    380
+  ]
+}
+
+Read [](), lines 165 to 390
+Completed with input: {
+  "path": "D:\\OSU\\cs467-optimiles\\backend\\ext_api\\api_template.py",
+  "view_range": [
+    165,
+    390
+  ]
+}
+
+Search for `await self\.(get|post|put|_request)\(|await api\.(get|post|put|_request)\(|\....`
+
+I’ll apply the pattern to the HTTP request API only: keep `_async_request` and add async variants for GET/POST/PUT, with the original names as synchronous wrappers. I’ll update the SeatsAero async callers and tests to use the async variants.
+
+Edit []()
+
+Search for `await api\._request|await api\.(get|post|put)\(`
+
+Search for `await self\.(get|post|put)\(`
+
+Search for `api\.(get|post) =|api\.(get|post)\(`
+
+Edit [](), [](), []()
+
+Edit []()
+
+Edit []()
+
+Ran terminal command: Set-Location backend; .\.venv\Scripts\python.exe -m pytest tests\test_api_template.py tests\test_seatsaero_flight_endpoints.py -q
+
+Search for `await (self|api)\.(get|post|put|_request)\(|await self\._request\(`
+
+Ran terminal command: Set-Location backend; .\.venv\Scripts\python.exe -m py_compile ext_api\api_template.py ext_api\seatsaero.py tests\test_api_template.py tests\test_seatsaero_flight_endpoints.py
+
+Ran terminal command: git --no-pager diff --check -- backend/ext_api/api_template.py backend/ext_api/seatsaero.py backend/tests/test_api_template.py backend/tests/test_seatsaero_flight_endpoints.py
+Tool execution failed with exit code 2
+
+Read [](), lines 250 to 450
+Completed with input: {
+  "path": "D:\\OSU\\cs467-optimiles\\backend\\ext_api\\api_template.py",
+  "view_range": [
+    250,
+    450
+  ]
+}
+
+Read [](), lines 1 to 36
+Completed with input: {
+  "path": "D:\\OSU\\cs467-optimiles\\backend\\ext_api\\seatsaero.py",
+  "view_range": [
+    1,
+    36
+  ]
+}
+
+Ran terminal command: git --no-pager diff -- backend/ext_api/api_template.py backend/ext_api/seatsaero.py backend/tests/test_api_template.py backend/tests/test_seatsaero_flight_endpoints.py
+
+Ran terminal command: git status --short
+
+Edit [](), []()
+
+Edit []()
+
+Ran terminal command: Set-Location backend; .\.venv\Scripts\python.exe -m pytest tests --ignore=tests\test_seatsaero.py -q
+
+Search for `await (self|api)\.(get|post|put|_request)\(|await self\._request\(`
+
+Ran terminal command: git --no-pager diff --check -- backend/ext_api/api_template.py backend/ext_api/seatsaero.py backend/tests/test_api_template.py backend/tests/test_seatsaero_flight_endpoints.py
+
+Ran terminal command: Set-Location backend; .\.venv\Scripts\python.exe -m py_compile ext_api\api_template.py ext_api\seatsaero.py tests\test_api_template.py tests\test_seatsaero_flight_endpoints.py
+
+Search for `async def _async_request|def _request\(|async def async_get|def get\(|async d...`
+
+Search for `async def async_(cached_search|get_trips|get_routes|get_destinations|get_avai...`
+
+Ran terminal command: git --no-pager diff --stat -- backend/ext_api/api_template.py backend/ext_api/seatsaero.py backend/tests/test_api_template.py backend/tests/test_seatsaero_flight_endpoints.py; git status --short
+
+Refactored the HTTP API methods in [api_template.py](</D:/OSU/cs467-optimiles/backend/ext_api/api_template.py>): `_async_request`, `async_get`, `async_post`, and `async_put` are async; `_request`, `get`, `post`, and `put` are synchronous wrappers using `bridge_run`.
+
+Updated async callers in [seatsaero.py](</D:/OSU/cs467-optimiles/backend/ext_api/seatsaero.py>) and tests to use the `async_` methods. Added coverage for the synchronous wrappers in [test_api_template.py](</D:/OSU/cs467-optimiles/backend/tests/test_api_template.py>).
+
+**Validation:** 63 backend tests passed, excluding `test_seatsaero.py` to avoid live API calls; compilation and whitespace checks passed.
+
+Callers that previously used `await api.get(...)` should now use `await api.async_get(...)`. Synchronous callers can continue using `api.get(...)`.
