@@ -7,6 +7,19 @@ Flask REST API for award flight search and the chat interface.
 Requires Python 3.12+. Run every command from the repo root; code imports through the `backend` package
 (`from backend.models import ...`).
 
+### macOS/Linux (bash or zsh)
+
+```bash
+python -m venv backend/.venv
+source backend/.venv/bin/activate
+python -m pip install -r backend/requirements.txt
+cp -n backend/.env.example backend/.env
+```
+
+`cp -n` preserves an existing `.env` file.
+
+### Windows (PowerShell)
+
 ```powershell
 py -m venv backend\.venv
 backend\.venv\Scripts\Activate.ps1                # macOS/Linux: source backend/.venv/bin/activate
@@ -23,11 +36,47 @@ flask --app backend.app run --debug
 The server runs at http://localhost:5000. Check it with
 http://localhost:5000/api/health.
 
+## API documentation
+
+Open [Swagger UI](http://localhost:5000/docs) to browse all three API endpoints,
+inspect request and response schemas, and send requests with **Try it out**.
+The backend root URL redirects here. The [OpenAPI JSON](http://localhost:5000/openapi.json)
+is also available for API clients and tooling.
+
+Schemas are generated from the existing Pydantic models in `models.py`.
+Update route descriptions and examples in `openapi.py` when adding or changing endpoints.
+Requests from Swagger UI use the same host and port as the documentation page.
+Swagger UI assets load from a pinned CDN version and require internet access;
+the JSON schema itself is served locally. No additional Python packages are needed.
+
 ## Test
 
 ```powershell
 pytest
 ```
+
+## Chat / LLM
+
+`/api/chat` uses Google Gemini (`google-genai` SDK) with tool calling. The model turns the
+message into `search_awards` arguments; code validates them with `SearchCriteria`, runs the
+search and computes `cents_per_point`. The model only summarizes the tool output and is told
+never to invent numbers. Each message is capped at 3 model calls (`MAX_TOOL_ROUNDS`).
+
+1. Create an API key in Google AI Studio (https://aistudio.google.com/apikey).
+2. Put it in `backend\.env` as `GEMINI_API_KEY=...`. Optionally set `GEMINI_MODEL` to override
+   the default in `llm/gemini_chat.py`.
+
+Without a key, `/api/chat` still works and replies that chat isn't connected yet.
+
+Try it from the command line:
+
+```powershell
+python -m backend.llm.demo "Business class from Chicago to Tokyo on Dec 1"
+python -m backend.llm.demo                     # interactive; keeps history for follow-ups
+python -m backend.llm.demo --model <model-name> "..."
+```
+
+Tests use a fake Gemini client, so `pytest` needs no key or network.
 
 ## Endpoints
 
@@ -38,14 +87,24 @@ pytest
 | POST   | `/api/chat`   | `{"message", "history"}` | `{"reply", "results"}`  |
 
 Request and response shapes are defined in `models.py`. Invalid input returns
-`400` with `{"error": "Invalid request", "details": [...]}`.
+`400` with `{"error": "Invalid request", "details": [...]}`. Every other error is
+JSON with a user-facing `error` message: `404`/`405` for unknown routes or methods,
+`500` for unexpected server errors, and, from `/api/search`, `502`/`503`/`504` when
+the award search service fails, hits its usage limit, or times out (mapped in
+`errors.py`). In `/api/chat`, award search failures come back in the reply instead.
 
 ## Layout
 
 - `app.py`: Flask routes only (validate, call a function, return JSON)
 - `models.py`: Pydantic models for the API contract
+- `errors.py`: award search failures mapped to HTTP status codes and user-facing messages
+- `openapi.py`: OpenAPI route metadata and generated model schemas
+- `templates/swagger_ui.html`: Swagger UI documentation page
 - `search.py`: `search_awards()` (stubbed with fake data) and redemption value math
-- `chat.py`: `handle_chat()` (stubbed until the LLM loop is built)
+- `chat.py`: `handle_chat()`, which delegates to the Gemini loop
+- `llm/tools.py`: the `search_awards` tool declaration and `run_search_tool()` (no Gemini imports)
+- `llm/gemini_chat.py`: Gemini client setup and the tool-calling loop
+- `llm/demo.py`: command-line demo against the real API
 - `tests/`: pytest tests
 
 Award search returns fake data for now.

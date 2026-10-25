@@ -393,3 +393,6 @@ $RECYCLE.BIN/
 /frontend/**/*.njsproj
 /frontend/**/*.sln
 /frontend/**/*.sw?
+
+# Frontend source helpers are not Python build output
+!/frontend/src/lib/

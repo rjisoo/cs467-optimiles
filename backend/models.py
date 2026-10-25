@@ -1,7 +1,7 @@
 """Pydantic models shared by the API routes and logic modules.
 
-These define the API contract with the frontend; keep docs/api-contract.md
-in sync when changing them."""
+These define the API contract with the frontend. The OpenAPI schemas at /docs are
+generated from them; update the examples in openapi.py when changing them."""
 
 from datetime import date
 from typing import Literal

@@ -1,0 +1,224 @@
+.entry-choices {
+  display: grid;
+  grid-template-rows: auto 30px auto;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.entry-card { min-width: 0; }
+
+.entry-card h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.3px;
+}
+
+.entry-card .section-icon {
+  width: 18px;
+  height: 18px;
+  background: transparent;
+}
+
+.details-entry h2 { margin-bottom: 4px; }
+
+.entry-card p,
+.cabin-choices legend span,
+.form-footer > span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.entry-card label,
+.entry-card legend {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.composer-row { position: relative; }
+
+.composer-row textarea {
+  display: block;
+  min-height: 80px;
+  padding: 14px 72px 14px 16px;
+  border-radius: var(--radius);
+  line-height: 24px;
+  resize: none;
+  overflow-y: hidden;
+}
+
+.entry-card ::placeholder {
+  color: var(--color-text-muted);
+  opacity: 1;
+}
+
+.entry-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--color-text-muted);
+}
+
+.entry-divider [data-slot="separator"] {
+  flex: 1;
+  width: auto;
+  height: 1px;
+  background: var(--color-border);
+}
+
+.entry-divider span {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  font-size: 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+}
+
+.trip-fields {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: 12px;
+}
+
+.route-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.detail-fields { grid-template-columns: 1fr 1.2fr 0.8fr; }
+
+.trip-fields label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  line-height: 1.45;
+}
+
+.form-end {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.cabin-choices {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.cabin-choices legend {
+  margin-bottom: var(--space-1);
+  padding: 0;
+}
+
+.cabin-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.cabin-options label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 8px 11px;
+  border: 1px solid var(--color-control-border);
+  border-radius: var(--radius-control);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.cabin-options [data-slot="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.cabin-options label:has([data-state="checked"]) {
+  color: var(--color-primary);
+  background: var(--color-accent-surface);
+  border-color: var(--color-primary);
+}
+
+.cabin-options label:has([data-slot="checkbox"]:focus-visible) {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 3px;
+}
+
+.cabin-options [data-slot="checkbox"]:focus-visible { outline: none; }
+
+.entry-card input:hover,
+.entry-card select:hover,
+.entry-card textarea:hover,
+.cabin-options label:hover {
+  border-color: var(--color-primary);
+}
+
+.form-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+  gap: var(--space-1);
+}
+
+.preview-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-width: 148px;
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  background: var(--color-disabled);
+  border: 1px solid var(--color-control-border);
+  border-radius: var(--radius-control);
+}
+
+.send-request {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0;
+  border-color: var(--color-border);
+  border-radius: 50%;
+}
+
+.send-request .icon { width: 20px; height: 20px; stroke-width: 2; }
+
+@media (min-width: 1600px) {
+  .entry-choices { padding: var(--space-4); }
+  .trip-fields { margin-top: 18px; }
+  .form-end { margin-top: var(--space-3); }
+}
+
+@media (max-width: 1399px) {
+  .entry-choices { padding: 20px; }
+  .form-end { margin-top: 12px; }
+}
+
+@media (max-width: 60rem) {
+  .form-end { flex-direction: column; gap: 16px; }
+  .form-footer { align-self: flex-end; }
+}
+
+@media (max-width: 36rem) {
+  .trip-fields { grid-template-columns: minmax(0, 1fr); }
+  .form-footer { align-items: flex-start; align-self: stretch; }
+}
