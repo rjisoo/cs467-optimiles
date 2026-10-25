@@ -22,23 +22,6 @@ def init_reward_eval():
     except Exception as e:
         logging.error("Unexpected error occurred: %s", e)
 
-def get_bank_image_link(bank_name):
-    bank_info = reward_programs.get(bank_name)
-    if bank_info is None:
-        logger.error("Bank %s not found in reward programs.", bank_name)
-        return None
-    return bank_info.get("logo_url")
-
-def get_all_bank_images_links():
-    bank_images = {}
-    for bank_name, bank_info in reward_programs.items():
-        logo_url = bank_info.get("logo_url")
-        if logo_url:
-            bank_images[bank_name] = logo_url
-        else:
-            logger.warning("No logo URL found for bank %s.", bank_name)
-    return bank_images
-
 def get_all_reward_info():
     """Get reward values and logo URLs for all banks."""
     return reward_programs
