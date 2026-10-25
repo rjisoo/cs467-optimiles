@@ -2,7 +2,7 @@ import threading
 import asyncio
 import atexit
 
-# Citation: the following solution is adopted from https://koladefaj.hashnode.dev/running-async-python-inside-celery-is-harder-than-you-think
+# Citation: the following solution is adopted from this blog post found here: https://koladefaj.hashnode.dev/running-async-python-inside-celery-is-harder-than-you-think
 
 # Maintains a persistant event_loop on another thread to to maintain the continuity of daemon-like async tasks (eg rate limiter's periodic saves)
 _loop = asyncio.new_event_loop()
