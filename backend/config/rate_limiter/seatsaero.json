@@ -1,0 +1,25 @@
+{
+    "name": "SeatsAero",
+    "settings": {
+        "backup_interval": 60
+    },
+    "limit_per_month": {
+        "enabled": false,
+        "max_requests": 10000,
+        "current_quota": 0
+    },
+    "limit_per_day": {
+        "enabled": true,
+        "max_requests": 1000,
+        "current_quota": 15,
+        "current_day": "2026-10-20",
+        "reset_time": "00:00:00+00:00",
+        "soft_retry": false
+    },
+    "limit_per_second": {
+        "enabled": false,
+        "max_requests": 10,
+        "mode": "strict"
+    },
+    "usage": {}
+}
