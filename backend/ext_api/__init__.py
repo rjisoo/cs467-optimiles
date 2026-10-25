@@ -1,6 +1,5 @@
 import atexit
-from utils import bridge_run
-
+from backend.utils import bridge_run
 from .api_exceptions import *
 from .seatsaero import SeatsAeroAPI
 from .reward_eval import (

@@ -20,7 +20,7 @@ LOGGING_CONFIG = {
         "file": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "default",
-            "filename": "logs/server.log",
+            "filename": "backend/logs/server.log",
             "maxBytes": 10485760,  # 10 MB
             "backupCount": 5,      # Keep up to 5 backup files
             "encoding": "utf-8",

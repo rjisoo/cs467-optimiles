@@ -1,10 +1,11 @@
 import logging
-from .api_exceptions import APIRouterError, APIStatusError, APITimeout
-import httpx
 import time
-from .api_ratelimiter import RateLimiter
 from pathlib import Path
-from utils import bridge_run
+import httpx
+from backend.utils import bridge_run
+from .api_exceptions import APIRouterError, APIStatusError, APITimeout
+from .api_ratelimiter import RateLimiter
+
 
 # Set current module name for logging
 logger = logging.getLogger(__name__)
@@ -29,7 +30,7 @@ class APIRouterTemplate:
         oauth (bool): Whether auth should be applied before requests.
     """
 
-    rate_limiter_config_dir = "config/rate_limiter/"
+    rate_limiter_config_dir = "backend/config/rate_limiter/"
     rate_limiter_config_ext = ".json"
 
     def __init__(

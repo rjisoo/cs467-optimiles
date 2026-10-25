@@ -5,7 +5,7 @@ from ext_api import init_reward_eval, get_all_reward_info, get_reward_value, get
 import copy
 import os
 
-original_file_path = Path("config/reward_program_info.json")
+original_file_path = Path("backend/config/reward_program_info.json")
 with open(original_file_path, "r", encoding="utf-8") as f:
     original_json = json.loads(f.read())
 
@@ -54,13 +54,13 @@ def test_reinitialize_reward_eval(monkeypatch):
         "point_value": 0.02,
         "logo_url": "https://example.com/testbank_logo.png",
     }
-    test_file_path = Path("config/test_reward_program_info.json")
+    test_file_path = Path("backend/config/test_reward_program_info.json")
 
     with open(test_file_path, "w", encoding="utf-8") as file:
         json.dump(new_json, file, indent=4)
 
     monkeypatch.setenv(
-        "REWARD_PROGRAM_VALUE_INFO_PATH", "config/test_reward_program_info.json"
+        "REWARD_PROGRAM_VALUE_INFO_PATH", "backend/config/test_reward_program_info.json"
     )
 
     init_reward_eval()
