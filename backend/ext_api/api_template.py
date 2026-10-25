@@ -74,7 +74,7 @@ class APIRouterTemplate:
     def generate_default_config(cls, api_name):
         """Wrapper function to generate a default config file for Rate limiter
         Raises:
-                    FileNotFoundError: When the directory is invalid
+            FileNotFoundError: When the directory is invalid
         """
 
         RateLimiter.generate_default_config(
@@ -205,7 +205,7 @@ class APIRouterTemplate:
             await self._async_auth()
 
         try:
-            logging.info("Sending %s request to %s", method, self.base_url + endpoint)
+            logging.debug("Sending %s request to %s", method, self.base_url + endpoint)
             if not bypass_rate_limiter:
                 await self.rate_limiter.request()
 
@@ -224,7 +224,7 @@ class APIRouterTemplate:
             response.raise_for_status()
             end_time = time.perf_counter()
             duration_ms = (end_time - start_time) * 1000
-            logging.info(
+            logging.debug(
                 "%s %s completed in %.2f ms",
                 method,
                 self.base_url + endpoint,
