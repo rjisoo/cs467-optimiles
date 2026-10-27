@@ -41,8 +41,12 @@ class Result(BaseModel):
     departure_date: date
     cabin: Cabin
     points_cost: int = Field(ge=0, description="Points per passenger")
-    cash_fees_usd: float = Field(ge=0, description="Taxes and fees per passenger")
-    seats_available: int = Field(ge=0)
+    cash_fees_usd: float | None = Field(
+        default=None, ge=0, description="Taxes and fees per passenger; null when not reported"
+    )
+    seats_available: int | None = Field(
+        default=None, ge=0, description="Seats left; null when the program doesn't report a count"
+    )
     cents_per_point: float | None = Field(
         default=None,
         description="Redemption value; null when no cash price data exists",

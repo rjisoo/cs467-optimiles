@@ -55,6 +55,20 @@ the JSON schema itself is served locally. No additional Python packages are need
 pytest
 ```
 
+## Award search (seats.aero)
+
+`search.py: search_awards()` is the single search path for `/api/search` and the chat tool. It
+calls the seats.aero Partner API cached search (`ext_api/seatsaero.py`) for the departure date
+and maps each row's requested cabin to a `Result`, cheapest first.
+
+Set `SEATSAERO_BASE_URL` (`https://seats.aero/partnerapi`) and `SEATSAERO_TOKEN` in
+`backend\.env`. The app won't start without the base URL. Without the token, searches return
+502 "Award search is unavailable".
+
+Cached search has no cash fares or taxes, so `cash_fees_usd` and `cents_per_point` are `null`.
+`seats_available` is `null` when the program doesn't report a seat count; those results are kept
+for any passenger count. Tests replace the seats.aero call with canned rows (`tests/conftest.py`).
+
 ## Chat / LLM
 
 `/api/chat` uses Google Gemini (`google-genai` SDK) with tool calling. The model turns the
