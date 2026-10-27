@@ -42,6 +42,31 @@ def test_unreported_values_are_null_not_invented():
     assert aeroplan.cents_per_point is None
 
 
+def test_usd_taxes_become_cash_fees():
+    results = {r.program: r for r in search_awards(criteria(cabin="business"))}
+    assert results["United MileagePlus"].cash_fees_usd == 5.60
+
+
+def test_non_usd_taxes_are_not_converted(monkeypatch, seats_aero_row):
+    row = seats_aero_row(
+        "aeroplan", origin="SFO", destination="NRT", day="2026-12-01",
+        TaxesCurrency="CAD", YAvailable=True, YMileageCost="51879", YTotalTaxes=9560,
+    )
+    monkeypatch.setattr(search, "_fetch_availability", lambda _: {"data": [row]})
+    [result] = search_awards(criteria())
+    assert result.cash_fees_usd is None
+
+
+def test_unavailable_cabin_with_raw_pricing_is_skipped(monkeypatch, seats_aero_row):
+    # Live data: seats.aero zeroes the filtered fields and keeps dynamic pricing in *Raw.
+    row = seats_aero_row(
+        "united", origin="SFO", destination="NRT", day="2026-12-01",
+        JAvailableRaw=True, JMileageCostRaw=360000, JRemainingSeatsRaw=9,
+    )
+    monkeypatch.setattr(search, "_fetch_availability", lambda _: {"data": [row]})
+    assert search_awards(criteria(cabin="business")) == []
+
+
 def test_filters_by_known_seat_count():
     programs = {r.program for r in search_awards(criteria(passengers=5))}
     # United has 7 seats; Flying Blue has 3; Aeroplan's count is unknown, so it stays.

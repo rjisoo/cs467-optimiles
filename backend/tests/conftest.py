@@ -18,11 +18,13 @@ def seats_aero_row(source, *, origin, destination, day, **cabin_fields):
         "Date": day,
         "Source": source,
         "Route": {"OriginAirport": origin, "DestinationAirport": destination, "Source": source},
+        "TaxesCurrency": "USD",
     }
     for prefix in "YWJF":
         row[f"{prefix}Available"] = False
         row[f"{prefix}MileageCost"] = "0"
         row[f"{prefix}RemainingSeats"] = 0
+        row[f"{prefix}TotalTaxes"] = 0
         row[f"{prefix}Airlines"] = ""
     row.update(cabin_fields)
     return row
@@ -39,7 +41,7 @@ def fake_availability(criteria):
         "data": [
             seats_aero_row(
                 "united", **route, JAvailable=True, JMileageCost="88000",
-                JRemainingSeats=4, JAirlines="UA", YAvailable=True,
+                JRemainingSeats=4, JTotalTaxes=560, JAirlines="UA", YAvailable=True,
                 YMileageCost="35000", YRemainingSeats=7, YAirlines="UA",
             ),
             seats_aero_row(

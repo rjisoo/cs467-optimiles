@@ -38,9 +38,11 @@ _PROGRAM_NAMES = {
     "etihad": "Etihad Guest",
     "flyingblue": "Air France-KLM Flying Blue",
     "jetblue": "JetBlue TrueBlue",
+    "lifemiles": "Avianca LifeMiles",
     "qantas": "Qantas Frequent Flyer",
     "qatar": "Qatar Privilege Club",
     "singapore": "Singapore KrisFlyer",
+    "smiles": "GOL Smiles",
     "turkish": "Turkish Miles&Smiles",
     "united": "United MileagePlus",
     "velocity": "Virgin Australia Velocity",
@@ -105,8 +107,18 @@ def _to_result(row: dict, criteria: SearchCriteria) -> Result | None:
         departure_date=row.get("Date") or criteria.departure_date,
         cabin=criteria.cabin,
         points_cost=points_cost,
-        # Cached search reports neither taxes nor a cash fare, so these stay unknown.
-        cash_fees_usd=None,
+        cash_fees_usd=_fees_usd(row, prefix),
         seats_available=seats,
+        # Cached search has no cash fare to compare against.
         cents_per_point=None,
     )
+
+
+def _fees_usd(row: dict, prefix: str) -> float | None:
+    """Taxes in dollars, or None when unreported (0) or not in USD (no conversion).
+
+    seats.aero reports {c}TotalTaxes in cents of TaxesCurrency (US departure fee = 560)."""
+    taxes = row.get(f"{prefix}TotalTaxes")
+    if row.get("TaxesCurrency") != "USD" or not isinstance(taxes, int) or taxes <= 0:
+        return None
+    return taxes / 100

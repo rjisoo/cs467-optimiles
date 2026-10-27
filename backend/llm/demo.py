@@ -16,10 +16,11 @@ def print_results(results: list[Result]) -> None:
         return
     for r in results:
         value = f"{r.cents_per_point:.2f}c/pt" if r.cents_per_point is not None else "no value data"
+        fees = f"${r.cash_fees_usd:.2f}" if r.cash_fees_usd is not None else "fees n/a"
+        seats = f"{r.seats_available} seats" if r.seats_available is not None else "seats n/a"
         print(
-            f"  {r.program:<22} {r.airline:<12} {r.origin}-{r.destination} {r.departure_date} "
-            f"{r.cabin:<15} {r.points_cost:>7,} pts  ${r.cash_fees_usd:>7.2f}  "
-            f"{r.seats_available} seats  {value}"
+            f"  {r.program:<28} {r.airline:<12} {r.origin}-{r.destination} {r.departure_date} "
+            f"{r.cabin:<15} {r.points_cost:>7,} pts  {fees:>8}  {seats:<9}  {value}"
         )
 
 
