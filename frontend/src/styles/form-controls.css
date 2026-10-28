@@ -1,0 +1,35 @@
+/* Shared control states stay below utilities so callers can specialize them. */
+@layer components {
+  .form-control {
+    @apply w-full rounded-lg border border-input bg-card;
+    @apply px-(--control-padding-inline) py-(--control-padding-block);
+    @apply text-[length:var(--font-input)] font-normal leading-[1.25];
+    @apply transition-colors;
+  }
+
+  .form-control::placeholder {
+    color: var(--color-muted-foreground);
+  }
+
+  .form-control:focus-visible {
+    border-color: var(--color-ring);
+  }
+
+  .form-control:disabled {
+    cursor: not-allowed;
+    background-color: var(--color-secondary);
+    color: var(--color-muted-foreground);
+  }
+
+  .form-control[aria-invalid='true'] {
+    @apply border-destructive ring-3 ring-destructive/20;
+  }
+
+  .form-control:is(.dark *) {
+    @apply bg-input/30;
+  }
+
+  .form-control:is(.dark *)[aria-invalid='true'] {
+    @apply border-destructive/50 ring-destructive/40;
+  }
+}
