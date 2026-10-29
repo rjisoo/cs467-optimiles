@@ -55,3 +55,10 @@ npm run dev
 ```
 
 `npm ci` installs the packages from the lockfile. Open the local URL printed in the terminal. Press Ctrl+C to stop the server.
+
+## Continuous integration
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every pull request and on pushes
+to `main`. It runs the backend tests (`python -m pytest`) and the frontend lint,
+tests, and build. The tests use fake Gemini and seats.aero clients, so CI needs no
+API keys or secrets. Run the same commands locally before pushing.
