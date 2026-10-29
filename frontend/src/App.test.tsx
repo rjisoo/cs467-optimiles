@@ -46,10 +46,11 @@ describe('trip entry', () => {
     window.history.replaceState(null, '', '/?preview=awards')
     try {
       render(<App />)
+      expect(screen.getByRole('region', { name: 'Award search results' })).toBeVisible()
       expect(screen.getByRole('navigation', { name: 'Main navigation' })).toBeVisible()
       await user.click(screen.getByRole('button', { name: 'New trip' }))
 
-      expect(screen.queryByRole('region', { name: 'Fictional static award preview' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('region', { name: 'Award search results' })).not.toBeInTheDocument()
       expect(screen.getByRole('navigation', { name: 'Main navigation' })).toBeVisible()
       expect(screen.getByRole('button', { name: 'New trip' })).not.toHaveAttribute('aria-current')
       expect(screen.getByRole('heading', { name: 'Find your next award trip' })).toHaveFocus()
@@ -58,7 +59,7 @@ describe('trip entry', () => {
     }
   })
 
-  it('leaves the preview through the collapsed menu at 768px with search still disabled', async () => {
+  it('leaves the preview through the collapsed menu at 768px with form search available', async () => {
     const user = userEvent.setup()
     vi.stubGlobal('matchMedia', vi.fn((query: string) => ({
       matches: query.includes('max-width') && 768 <= Number(query.match(/[\d.]+/)?.[0]) * 16,
@@ -69,16 +70,16 @@ describe('trip entry', () => {
     window.history.replaceState(null, '', '/?preview=awards')
     try {
       render(<App />)
-      expect(screen.getByRole('region', { name: 'Fictional static award preview' })).toBeInTheDocument()
+      expect(screen.getByRole('region', { name: 'Award search results' })).toBeInTheDocument()
       expect(screen.queryByRole('navigation', { name: 'Main navigation' })).not.toBeInTheDocument()
 
       await user.click(screen.getByRole('button', { name: 'Menu' }))
       await user.click(screen.getByRole('button', { name: 'New trip' }))
 
-      expect(screen.queryByRole('region', { name: 'Fictional static award preview' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('region', { name: 'Award search results' })).not.toBeInTheDocument()
       expect(screen.queryByRole('navigation', { name: 'Main navigation' })).not.toBeInTheDocument()
       expect(screen.getByRole('heading', { name: 'Find your next award trip' })).toHaveFocus()
-      expect(screen.getByRole('button', { name: 'Search awards' })).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Search awards' })).toBeEnabled()
     } finally {
       window.history.replaceState(null, '', '/')
     }
