@@ -20,6 +20,7 @@ class RawCabinAvailability(SeatsAeroModel):
     taxes_fees: RawNumber = None
     taxes_fees_direct: RawNumber = None
 
+
 class RawRoute(SeatsAeroModel):
     route_id: str = Field(alias="ID")
     origin_airport: str = Field(alias="OriginAirport")
@@ -38,16 +39,23 @@ class RawAvailabilityRecord(SeatsAeroModel):
         "business": "J",
         "first": "F",
     }
-    cabin_fields: ClassVar[list[str]]=["Available", "MileageCost","TotalTaxes", "RemainingSeats", "Airlines", "Direct"]
+    cabin_fields: ClassVar[list[str]] = [
+        "Available",
+        "MileageCost",
+        "TotalTaxes",
+        "RemainingSeats",
+        "Airlines",
+        "Direct",
+    ]
 
     availability_id: str = Field(alias="ID")
-    
+
     route_id: str = Field(alias="RouteID")
     date: Date = Field(alias="Date")
-    parsed_date: datetime= Field(alias="ParsedDate")
+    parsed_date: datetime = Field(alias="ParsedDate")
     route: RawRoute = Field(alias="Route")
     source: str = Field(alias="Source")
-    created_at: datetime= Field(alias="CreatedAt")
+    created_at: datetime = Field(alias="CreatedAt")
     provider_updated_at: datetime = Field(alias="UpdatedAt")
     taxes_currency: str = Field(alias="TaxesCurrency")
     raw_cabins: dict[str, RawCabinAvailability]
@@ -60,7 +68,7 @@ class RawAvailabilityRecord(SeatsAeroModel):
     business_available_direct: bool = Field(alias="JDirect")
     first_available: bool = Field(alias="FAvailable")
     first_available_direct: bool = Field(alias="FDirect")
-    
+
     @model_validator(mode="before")
     @classmethod
     def collect_cabin_fields(cls, value: dict) -> Any:
@@ -69,12 +77,22 @@ class RawAvailabilityRecord(SeatsAeroModel):
         for cabin, prefix in cls.prefixes_cabin.items():
             cabin_values: dict[str, Any] = {}
             for source_suffix, model_suffix in (("", "Direct"), ("", "_direct")):
-                cabin_values.update({
-                    f"airlines{model_suffix}": value.get(f"{prefix}{source_suffix}Airlines"),
-                    f"remaining_seats{model_suffix}": value.get(f"{prefix}{source_suffix}RemainingSeats"),
-                    f"from_points{model_suffix}": value.get(f"{prefix}{source_suffix}MileageCost"),
-                    f"taxes_fees{model_suffix}": value.get(f"{prefix}{source_suffix}TotalTaxes"),
-                })
+                cabin_values.update(
+                    {
+                        f"airlines{model_suffix}": value.get(
+                            f"{prefix}{source_suffix}Airlines"
+                        ),
+                        f"remaining_seats{model_suffix}": value.get(
+                            f"{prefix}{source_suffix}RemainingSeats"
+                        ),
+                        f"from_points{model_suffix}": value.get(
+                            f"{prefix}{source_suffix}MileageCost"
+                        ),
+                        f"taxes_fees{model_suffix}": value.get(
+                            f"{prefix}{source_suffix}TotalTaxes"
+                        ),
+                    }
+                )
 
             cabins[cabin] = cabin_values
 
