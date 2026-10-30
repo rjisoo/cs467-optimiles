@@ -1,7 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import Icon from './Icon'
-import './AwardHelp.css'
 
 type AwardHelpProps = {
   onOpen: () => void
@@ -18,7 +17,7 @@ function AwardHelp({ onOpen }: AwardHelpProps) {
         </Button>
       </DialogTrigger>
       <DialogContent className="award-help" showCloseButton={false}>
-        <div className="help-header">
+        <div className="help-header toolbar">
           <span className="section-icon"><Icon name="info" /></span>
           <DialogClose asChild>
             <Button className="help-close" variant="outline" type="button">Close help</Button>

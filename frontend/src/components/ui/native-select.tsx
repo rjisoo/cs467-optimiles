@@ -24,7 +24,13 @@ function NativeSelect({
       <select
         data-slot="native-select"
         data-size={size}
-        className="min-h-(--control-min-height) w-full min-w-0 appearance-none rounded-lg border border-input bg-card py-(--control-padding-block) pr-9 pl-(--control-padding-inline) text-[length:var(--font-input)] font-normal leading-[1.25] transition-colors select-none selection:bg-primary selection:text-primary-foreground placeholder:text-muted-foreground focus-visible:border-ring disabled:cursor-not-allowed disabled:bg-secondary disabled:text-muted-foreground aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 data-[size=sm]:h-7 data-[size=sm]:min-h-7 data-[size=sm]:rounded-[min(var(--radius-md),10px)] data-[size=sm]:py-0.5 dark:bg-input/30 dark:hover:bg-input/50 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"
+        className={cn(
+          "form-control min-h-(--control-min-height) min-w-0 appearance-none pr-9",
+          "select-none selection:bg-primary selection:text-primary-foreground",
+          "data-[size=sm]:h-7 data-[size=sm]:min-h-7",
+          "data-[size=sm]:rounded-[min(var(--radius-md),10px)] data-[size=sm]:py-0.5",
+          "dark:hover:bg-input/50"
+        )}
         {...props}
       />
       <ChevronDownIcon
@@ -49,17 +55,4 @@ function NativeSelectOption({
   )
 }
 
-function NativeSelectOptGroup({
-  className,
-  ...props
-}: React.ComponentProps<"optgroup">) {
-  return (
-    <optgroup
-      data-slot="native-select-optgroup"
-      className={cn("bg-[Canvas] text-[CanvasText]", className)}
-      {...props}
-    />
-  )
-}
-
-export { NativeSelect, NativeSelectOptGroup, NativeSelectOption }
+export { NativeSelect, NativeSelectOption }

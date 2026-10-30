@@ -1,0 +1,219 @@
+/* Conversation shell */
+.app-shell.app-shell--conversation {
+  height: var(--workspace-height, 100dvh);
+  min-height: 0;
+  grid-template-rows: minmax(82px, auto) minmax(0, 1fr);
+}
+
+.app-shell.app-shell--conversation .workspace {
+  height: 100%;
+  min-height: 0;
+  justify-content: start;
+  gap: var(--space-2);
+  padding-bottom: max(var(--space-2), env(safe-area-inset-bottom));
+}
+
+.app-shell.app-shell--conversation .entry-intro {
+  flex-shrink: 0;
+  margin-bottom: 0;
+}
+
+/* Current trip */
+.current-trip {
+  flex-shrink: 0;
+  gap: 12px;
+  padding: 9px 12px;
+}
+
+.current-trip > div {
+  min-width: 0;
+}
+
+.current-trip-route {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.current-trip-route .icon {
+  color: var(--color-text-muted);
+}
+
+.current-trip-criteria {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  margin-top: 4px;
+  color: var(--color-text-muted);
+  font-size: var(--font-compact-caption);
+}
+
+.current-trip-criteria > span + span::before {
+  content: '·';
+  margin-right: 8px;
+}
+
+.current-trip button {
+  flex: 0 0 auto;
+  font-size: var(--font-compact-caption);
+  height: 32px;
+}
+
+/* Messages */
+.conversation-turn {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.conversation-request {
+  justify-self: end;
+  max-width: 70%;
+  width: fit-content;
+  overflow-wrap: anywhere;
+  padding: 9px 12px;
+  border-radius: 12px 12px 3px 12px;
+  background: var(--color-user-bubble);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.conversation-assistant {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.conversation-assistant > span {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  color: var(--color-on-nav);
+  background: var(--color-nav);
+}
+
+.conversation-assistant .icon {
+  width: 15px;
+  height: 15px;
+}
+
+.conversation-response {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+}
+
+/* Compact trip summary and messages */
+@media (width < 48rem) {
+  .current-trip {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 6px;
+    padding: 8px 10px;
+  }
+
+  .current-trip > div {
+    display: contents;
+  }
+
+  .current-trip-route {
+    font-size: var(--font-compact-label);
+    gap: 5px;
+  }
+
+  .current-trip-criteria {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin-top: 0;
+  }
+
+  .current-trip button {
+    grid-column: 2;
+    grid-row: 1;
+    min-height: 32px;
+    padding: 4px 6px;
+    gap: 3px;
+    font-size: var(--font-compact-note);
+  }
+
+  .current-trip-edit-note {
+    display: none;
+  }
+
+  .conversation-request {
+    max-width: 90%;
+    font-size: 13px;
+  }
+}
+
+/* Conversation scrolling and feedback */
+.conversation {
+  flex: 1;
+  min-height: 3rem;
+  overflow-y: auto;
+  overflow-anchor: none;
+  scrollbar-gutter: stable;
+  padding: 10px 4px 12px 0;
+}
+
+.conversation > section + section {
+  margin-top: var(--space-4);
+}
+
+.conversation-feedback {
+  gap: var(--space-1);
+  font-size: var(--font-small);
+}
+
+.conversation-feedback:has(button) p {
+  flex: 1;
+}
+
+/* Responsive shell */
+@media (max-width: 56.25rem) {
+  .app-shell.app-shell--conversation {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .app-shell.app-shell--conversation .app-navigation {
+    display: block;
+    flex-shrink: 0;
+  }
+
+  .app-shell.app-shell--conversation .workspace {
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .app-shell.app-shell--conversation .entry-eyebrow {
+    display: none;
+  }
+
+  .app-shell.app-shell--conversation #preview-notice {
+    font-size: var(--font-caption);
+  }
+}
+
+@media (max-height: 32rem) {
+  .app-shell.app-shell--conversation .entry-eyebrow {
+    display: none;
+  }
+
+  .app-shell.app-shell--conversation .workspace {
+    padding-block: 6px;
+    gap: 4px;
+  }
+
+  .app-shell.app-shell--conversation #preview-notice {
+    max-height: 3rem;
+    overflow-y: auto;
+  }
+}
