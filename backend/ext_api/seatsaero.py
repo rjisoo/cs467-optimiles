@@ -3,6 +3,7 @@ import dotenv
 import os
 import logging
 from . import APIRouterError, APIStatusError, APITimeout
+from .seatsaero_models import RawCachedSearchResponse
 
 logger = logging.getLogger(__name__)
 
@@ -241,3 +242,8 @@ class SeatsAeroAPI(APIRouterTemplate):
         raises APIRouterError, APIStatusError, APITimeout.
         """
         return self._sync_api_request(lambda: self.post("/refresh", payload=payload))
+
+    def cached_search_to_client_json(self, params: dict) -> dict:
+        resp_raw = self.cached_search(params=params)
+        resp = RawCachedSearchResponse.model_validate(resp_raw)
+        return resp.to_client_json()
