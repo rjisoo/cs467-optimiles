@@ -8,7 +8,7 @@ from werkzeug.exceptions import HTTPException
 
 from backend.chat import handle_chat
 from backend.errors import UPSTREAM_ERRORS, describe_upstream_error
-from backend.models import ChatRequest, SearchCriteria, SearchResponse
+from backend.models import ChatRequest, SearchCriteria
 from backend.openapi import build_openapi
 from backend.search import search_awards
 
@@ -57,8 +57,7 @@ def create_app() -> Flask:
     @app.post("/api/search")
     def search():
         criteria = SearchCriteria.model_validate(_json_body())
-        response = SearchResponse(results=search_awards(criteria))
-        return jsonify(response.model_dump(mode="json"))
+        return jsonify(search_awards(criteria).model_dump(mode="json"))
 
     @app.post("/api/chat")
     def chat():

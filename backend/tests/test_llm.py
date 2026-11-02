@@ -13,7 +13,7 @@ from backend.llm.gemini_chat import (
     build_contents,
     run_chat,
 )
-from backend.llm.tools import NO_RESULTS_MESSAGE, run_search_tool
+from backend.llm.tools import run_search_tool
 from backend.models import ChatMessage, ChatRequest, SearchCriteria
 from backend.search import search_awards
 
@@ -64,7 +64,7 @@ def chat(client, message="Business class from Chicago to Tokyo on Dec 1", histor
 
 def test_run_search_tool_returns_results_from_code():
     payload, results = run_search_tool(SEARCH_ARGS)
-    expected = search_awards(SearchCriteria.model_validate(SEARCH_ARGS))
+    expected = search_awards(SearchCriteria.model_validate(SEARCH_ARGS)).results
     assert results == expected
     assert payload["count"] == len(expected)
     assert [r["cents_per_point"] for r in payload["results"]] == [
@@ -83,7 +83,10 @@ def test_run_search_tool_reports_no_results():
     payload, results = run_search_tool({**SEARCH_ARGS, "passengers": 9})
     assert results == []
     assert payload["count"] == 0
-    assert payload["message"] == NO_RESULTS_MESSAGE
+    assert payload["message"] == (
+        "Business award seats exist from ORD to HND on 2026-12-01, "
+        "but no program reports 9 seats available."
+    )
 
 
 def test_plain_reply_without_tool_call():
@@ -98,7 +101,7 @@ def test_tool_call_then_summary():
     client = FakeClient(tool_response(SEARCH_ARGS), text_response("Here are 3 options."))
     response = chat(client)
     assert response.reply == "Here are 3 options."
-    assert response.results == search_awards(SearchCriteria.model_validate(SEARCH_ARGS))
+    assert response.results == search_awards(SearchCriteria.model_validate(SEARCH_ARGS)).results
     assert sent_function_response(client, 1)["count"] == len(response.results)
 
 
@@ -120,7 +123,7 @@ def test_no_results_message_is_sent_back_to_model():
     )
     response = chat(client)
     assert response.results == []
-    assert sent_function_response(client, 1)["message"] == NO_RESULTS_MESSAGE
+    assert "9 seats" in sent_function_response(client, 1)["message"]
 
 
 def test_unknown_tool_is_not_executed():

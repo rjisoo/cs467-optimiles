@@ -129,7 +129,8 @@ def build_openapi(server_url: str = "/") -> dict:
                 "post": _post_operation(
                     "Search award flights",
                     "Airport codes are trimmed and uppercased. Origin and destination must "
-                    "differ; return_date must be on or after departure_date.",
+                    "differ; return_date must be on or after departure_date. When no flights "
+                    "match, results is empty and message says why.",
                     refs[SearchCriteria, "validation"],
                     refs[SearchResponse, "serialization"],
                     {

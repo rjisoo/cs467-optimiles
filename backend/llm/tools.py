@@ -38,9 +38,6 @@ SEARCH_AWARDS_DECLARATION = {
     },
 }
 
-NO_RESULTS_MESSAGE = "No award availability found for these criteria."
-
-
 def run_search_tool(args: dict) -> tuple[dict, list[Result]]:
     """Validate the LLM's arguments and run the search.
 
@@ -55,14 +52,14 @@ def run_search_tool(args: dict) -> tuple[dict, list[Result]]:
         return {"error": "Invalid search criteria", "details": details}, []
 
     try:
-        results = search_awards(criteria)
+        response = search_awards(criteria)
     except UPSTREAM_ERRORS as error:
         logger.warning("Award search failed", exc_info=error)
         return {"error": describe_upstream_error(error)[1]}, []
     payload: dict = {
-        "count": len(results),
-        "results": [result.model_dump(mode="json") for result in results],
+        "count": len(response.results),
+        "results": [result.model_dump(mode="json") for result in response.results],
     }
-    if not results:
-        payload["message"] = NO_RESULTS_MESSAGE
-    return payload, results
+    if response.message:
+        payload["message"] = response.message
+    return payload, response.results
