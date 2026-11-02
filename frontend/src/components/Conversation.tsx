@@ -15,10 +15,20 @@ type Props = {
 }
 
 const statusText = {
-  pending: 'Searching award options… Local mock only.',
-  success: 'Mock availability summaries loaded. No live search.',
+  pending: 'Searching award options… Displayed results use local samples.',
+  success: 'Sample availability summaries loaded. Backend replies are not displayed.',
   canceled: 'Canceled. Stopped waiting; draft and earlier results retained.',
-  failed: 'Mock search failed. This does not mean no awards exist. Draft and earlier results retained.',
+  failed: 'Request failed. This does not mean no awards exist. Draft and earlier results retained.',
+}
+
+function turnStatus(turn: SearchTurn): string {
+  if (turn.status === 'failed' && turn.error) {
+    return turn.error
+  }
+  if (turn.source === 'chat' && turn.status === 'success') {
+    return 'Message submitted. Backend replies are not displayed; results shown here are samples.'
+  }
+  return statusText[turn.status]
 }
 
 export default function Conversation({ turns, lastActionId, pending, onRetry, onComparisonChange }: Props) {
@@ -109,7 +119,7 @@ export default function Conversation({ turns, lastActionId, pending, onRetry, on
                 />
               ) : (
                 <div className="conversation-response">
-                  <p>{statusText[turn.status]}</p>
+                  <p>{turnStatus(turn)}</p>
                   {turn.status === 'pending' && <progress aria-label="Searching mock awards" />}
                   {canRetry && (
                     <Button disabled={pending} onClick={() => onRetry(turn)}>
@@ -123,7 +133,7 @@ export default function Conversation({ turns, lastActionId, pending, onRetry, on
         })}
       </div>
       <div className="conversation-feedback toolbar">
-        <p role="status">{statusText[lastAction.status]}</p>
+        <p role="status">{turnStatus(lastAction)}</p>
         {hasNewResults && <Button onClick={showNewResults}>New results</Button>}
       </div>
     </>

@@ -3,6 +3,7 @@ import {
   ArrowUp,
   CircleHelp,
   ChevronDown,
+  Coins,
   History,
   Menu,
   MessageSquare,
@@ -12,6 +13,9 @@ import {
   Plus,
   Search,
   SlidersHorizontal,
+  Timer,
+  Trophy,
+  Waves,
 } from 'lucide-react'
 
 const icons = {
@@ -28,6 +32,10 @@ const icons = {
   info: CircleHelp,
   settings: SlidersHorizontal,
   chevronDown: ChevronDown,
+  coins: Coins,
+  timer: Timer,
+  trophy: Trophy,
+  waves: Waves,
 }
 
 function Icon({ name }: { name: keyof typeof icons }) {

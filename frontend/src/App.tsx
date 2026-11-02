@@ -87,13 +87,13 @@ function App() {
           </div>
           <AwardHelp onOpen={() => setIsMenuOpen(false)} />
           <p id="preview-notice">
-            <Badge className="preview-badge" variant="secondary">Local mock</Badge>
+            <Badge className="preview-badge" variant="secondary">Sample results</Badge>
             {hasConversation ? (
-              'Normalized mock availability · Expand a row to load trips · No live search.'
+              'Chat messages are sent to the backend. Replies are not displayed; results shown here are samples.'
             ) : (
               <>
                 Try any chat message for JFK → SEA, Oct 31–Nov 6, 2026, or use the form for one date in that range.
-                {' '}No live search or text interpretation. Append “Fail once.” to try failure and Retry.
+                {' '}Chat sends your text to the backend; displayed results remain samples. Append “Fail once.” to try failure and Retry.
               </>
             )}
           </p>
