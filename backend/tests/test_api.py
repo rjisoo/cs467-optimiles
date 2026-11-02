@@ -25,6 +25,15 @@ def test_search_returns_results(client):
         assert result["origin"] == "SFO"
         assert result["cabin"] == "business"
         assert result["seats_available"] is None or result["seats_available"] >= 2
+    assert response.get_json()["message"] is None
+
+
+def test_search_explains_empty_results(client):
+    response = client.post("/api/search", json={**VALID_SEARCH, "cabin": "first"})
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["results"] == []
+    assert body["message"].startswith("No first award seats")
 
 
 def test_search_rejects_same_origin_and_destination(client):

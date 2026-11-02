@@ -55,6 +55,9 @@ class Result(BaseModel):
 
 class SearchResponse(BaseModel):
     results: list[Result]
+    message: str | None = Field(
+        default=None, description="Why results is empty; null when there are results"
+    )
 
 
 class ChatMessage(BaseModel):

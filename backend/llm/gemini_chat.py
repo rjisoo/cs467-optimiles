@@ -39,7 +39,7 @@ Rules:
 - Only quote numbers that appear in the tool results. Do not do your own math.
 - If cents_per_point is null, say there is no value data for that option.
 - If cash_fees_usd or seats_available is null, say that it wasn't reported; don't guess.
-- If the tool returns no results, say plainly that no availability was found.
+- If the tool returns no results, say plainly that no availability was found, using its message.
 - If the tool returns an error, explain what needs fixing and ask the user.
 - Keep replies short and friendly; the user may be new to points programs."""
 

@@ -94,11 +94,11 @@ Tests use a fake Gemini client, so `pytest` needs no key or network.
 
 ## Endpoints
 
-| Method | Path          | Body                     | Returns                 |
-| ------ | ------------- | ------------------------ | ----------------------- |
-| GET    | `/api/health` | none                     | `{"status": "ok"}`      |
-| POST   | `/api/search` | `SearchCriteria`         | `{"results": [Result]}` |
-| POST   | `/api/chat`   | `{"message", "history"}` | `{"reply", "results"}`  |
+| Method | Path          | Body                     | Returns                            |
+| ------ | ------------- | ------------------------ | ---------------------------------- |
+| GET    | `/api/health` | none                     | `{"status": "ok"}`                 |
+| POST   | `/api/search` | `SearchCriteria`         | `{"results": [Result], "message"}` |
+| POST   | `/api/chat`   | `{"message", "history"}` | `{"reply", "results"}`             |
 
 Request and response shapes are defined in `models.py`. Invalid input returns
 `400` with `{"error": "Invalid request", "details": [...]}`. Every other error is

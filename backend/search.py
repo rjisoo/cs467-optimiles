@@ -6,7 +6,7 @@ import logging
 import os
 
 from backend.ext_api import APIRouterError, seatsaero_api
-from backend.models import Cabin, Result, SearchCriteria
+from backend.models import Cabin, Result, SearchCriteria, SearchResponse
 
 logger = logging.getLogger(__name__)
 
@@ -50,20 +50,38 @@ _PROGRAM_NAMES = {
 }
 
 
-def search_awards(criteria: SearchCriteria) -> list[Result]:
-    """Return award availability matching the criteria.
+def search_awards(criteria: SearchCriteria) -> SearchResponse:
+    """Return award availability matching the criteria, with a message when there is none.
 
     Raises the ext_api errors (APITimeout, APIStatusError, ...) on upstream failure;
     the route and the chat tool map those to user-facing messages (backend/errors.py)."""
     response = _fetch_availability(criteria)
     if response.get("hasMore"):
         logger.info("seats.aero returned more pages; only the first is used")
+    rows = response.get("data") or []
     results = []
-    for row in response.get("data") or []:
+    for row in rows:
         result = _to_result(row, criteria)
         if result is not None:
             results.append(result)
-    return sorted(results, key=lambda r: r.points_cost)
+    if results:
+        return SearchResponse(results=sorted(results, key=lambda r: r.points_cost))
+    return SearchResponse(results=[], message=_empty_message(rows, criteria))
+
+
+def _empty_message(rows: list[dict], criteria: SearchCriteria) -> str:
+    """Say why nothing matched: too few seats, wrong cabin, or no availability at all."""
+    trip = f"from {criteria.origin} to {criteria.destination} on {criteria.departure_date}"
+    cabin = criteria.cabin.replace("_", " ")
+    one_seat = criteria.model_copy(update={"passengers": 1})
+    if any(_to_result(row, one_seat) for row in rows):
+        return (
+            f"{cabin.capitalize()} award seats exist {trip}, but no program reports "
+            f"{criteria.passengers} seats available."
+        )
+    if any(row.get(f"{prefix}Available") for row in rows for prefix in _CABIN_PREFIX.values()):
+        return f"No {cabin} award seats {trip}. Other cabins have availability."
+    return f"No award availability found {trip}."
 
 
 def _fetch_availability(criteria: SearchCriteria) -> dict:

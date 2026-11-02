@@ -26,7 +26,7 @@ def test_cents_per_point_is_none_without_cash_price():
 
 
 def test_maps_rows_for_requested_cabin_cheapest_first():
-    results = search_awards(criteria(cabin="business"))
+    results = search_awards(criteria(cabin="business")).results
     assert [(r.program, r.points_cost, r.airline) for r in results] == [
         ("Air Canada Aeroplan", 75000, "NH"),
         ("United MileagePlus", 88000, "UA"),
@@ -35,7 +35,7 @@ def test_maps_rows_for_requested_cabin_cheapest_first():
 
 
 def test_unreported_values_are_null_not_invented():
-    results = {r.program: r for r in search_awards(criteria())}
+    results = {r.program: r for r in search_awards(criteria()).results}
     aeroplan = results["Air Canada Aeroplan"]
     assert aeroplan.seats_available is None
     assert aeroplan.cash_fees_usd is None
@@ -43,7 +43,7 @@ def test_unreported_values_are_null_not_invented():
 
 
 def test_usd_taxes_become_cash_fees():
-    results = {r.program: r for r in search_awards(criteria(cabin="business"))}
+    results = {r.program: r for r in search_awards(criteria(cabin="business")).results}
     assert results["United MileagePlus"].cash_fees_usd == 5.60
 
 
@@ -53,7 +53,7 @@ def test_non_usd_taxes_are_not_converted(monkeypatch, seats_aero_row):
         TaxesCurrency="CAD", YAvailable=True, YMileageCost="51879", YTotalTaxes=9560,
     )
     monkeypatch.setattr(search, "_fetch_availability", lambda _: {"data": [row]})
-    [result] = search_awards(criteria())
+    [result] = search_awards(criteria()).results
     assert result.cash_fees_usd is None
 
 
@@ -64,11 +64,11 @@ def test_unavailable_cabin_with_raw_pricing_is_skipped(monkeypatch, seats_aero_r
         JAvailableRaw=True, JMileageCostRaw=360000, JRemainingSeatsRaw=9,
     )
     monkeypatch.setattr(search, "_fetch_availability", lambda _: {"data": [row]})
-    assert search_awards(criteria(cabin="business")) == []
+    assert search_awards(criteria(cabin="business")).results == []
 
 
 def test_filters_by_known_seat_count():
-    programs = {r.program for r in search_awards(criteria(passengers=5))}
+    programs = {r.program for r in search_awards(criteria(passengers=5)).results}
     # United has 7 seats; Flying Blue has 3; Aeroplan's count is unknown, so it stays.
     assert programs == {"United MileagePlus", "Air Canada Aeroplan"}
 
@@ -79,14 +79,37 @@ def test_unknown_source_falls_back_to_raw_key(monkeypatch, seats_aero_row):
         FAvailable=True, FMileageCost="120000", FRemainingSeats=1,
     )
     monkeypatch.setattr(search, "_fetch_availability", lambda _: {"data": [row]})
-    [result] = search_awards(criteria(cabin="first"))
+    [result] = search_awards(criteria(cabin="first")).results
     assert result.program == "newprogram"
     assert result.airline == "Not reported"
 
 
-def test_empty_response_gives_no_results(monkeypatch):
+def test_empty_response_gives_no_results_and_says_why(monkeypatch):
     monkeypatch.setattr(search, "_fetch_availability", lambda _: {"data": None})
-    assert search_awards(criteria()) == []
+    response = search_awards(criteria())
+    assert response.results == []
+    assert response.message == "No award availability found from SFO to NRT on 2026-12-01."
+
+
+def test_message_is_null_when_there_are_results():
+    assert search_awards(criteria()).message is None
+
+
+def test_message_when_only_other_cabins_are_available():
+    response = search_awards(criteria(cabin="first"))
+    assert response.results == []
+    assert response.message == (
+        "No first award seats from SFO to NRT on 2026-12-01. Other cabins have availability."
+    )
+
+
+def test_message_when_too_few_seats():
+    response = search_awards(criteria(cabin="business", passengers=5))
+    assert response.results == []
+    assert response.message == (
+        "Business award seats exist from SFO to NRT on 2026-12-01, "
+        "but no program reports 5 seats available."
+    )
 
 
 def test_sends_route_and_date_to_seats_aero(monkeypatch):
