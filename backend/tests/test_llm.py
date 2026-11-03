@@ -17,12 +17,17 @@ from backend.llm.tools import run_search_tool
 from backend.models import ChatMessage, ChatRequest, SearchCriteria
 from backend.search import search_awards
 
+USER_TEXT = "Business class from Chicago to Tokyo on Dec 1"
 SEARCH_ARGS = {
     "origin": "ORD",
     "destination": "HND",
     "departure_date": "2026-12-01",
     "cabin": "business",
+    "origin_quote": "Chicago",
+    "destination_quote": "Tokyo",
+    "date_quote": "Dec 1",
 }
+CRITERIA = SearchCriteria.model_validate(SEARCH_ARGS)
 
 
 def text_response(text):
@@ -58,13 +63,13 @@ def sent_function_response(client, call_index):
     return client.calls[call_index][-1].parts[0].function_response.response
 
 
-def chat(client, message="Business class from Chicago to Tokyo on Dec 1", history=()):
+def chat(client, message=USER_TEXT, history=()):
     return run_chat(ChatRequest(message=message, history=list(history)), client, "test-model")
 
 
 def test_run_search_tool_returns_results_from_code():
-    payload, results = run_search_tool(SEARCH_ARGS)
-    expected = search_awards(SearchCriteria.model_validate(SEARCH_ARGS)).results
+    payload, results = run_search_tool(SEARCH_ARGS, USER_TEXT)
+    expected = search_awards(CRITERIA).results
     assert results == expected
     assert payload["count"] == len(expected)
     assert [r["cents_per_point"] for r in payload["results"]] == [
@@ -73,20 +78,75 @@ def test_run_search_tool_returns_results_from_code():
 
 
 def test_run_search_tool_reports_invalid_args():
-    payload, results = run_search_tool({**SEARCH_ARGS, "origin": "Chicago"})
+    payload, results = run_search_tool({**SEARCH_ARGS, "origin": "Chicago"}, USER_TEXT)
     assert payload["error"] == "Invalid search criteria"
     assert payload["details"]
     assert results == []
 
 
 def test_run_search_tool_reports_no_results():
-    payload, results = run_search_tool({**SEARCH_ARGS, "passengers": 9})
+    payload, results = run_search_tool({**SEARCH_ARGS, "passengers": 9}, USER_TEXT)
     assert results == []
     assert payload["count"] == 0
     assert payload["message"] == (
         "Business award seats exist from ORD to HND on 2026-12-01, "
         "but no program reports 9 seats available."
     )
+
+
+def test_run_search_tool_rejects_date_the_user_never_gave():
+    args = {**SEARCH_ARGS, "date_quote": ""}
+    payload, results = run_search_tool(args, "Business class from Chicago to Tokyo")
+    assert payload["error"] == "Missing trip details"
+    assert payload["missing"] == ["departure date"]
+    assert "today's date" in payload["instruction"]
+    assert results == []
+
+
+def test_run_search_tool_rejects_quotes_not_in_user_text():
+    args = {**SEARCH_ARGS, "origin_quote": "New York", "date_quote": "today"}
+    payload, results = run_search_tool(args, "Flights to Tokyo")
+    assert payload["missing"] == ["origin", "departure date"]
+    assert results == []
+
+
+def test_run_search_tool_quotes_ignore_case_spacing_and_punctuation():
+    args = {**SEARCH_ARGS, "origin_quote": "chicago", "date_quote": " DEC  1. "}
+    payload, results = run_search_tool(args, USER_TEXT)
+    assert "error" not in payload
+    assert results
+
+
+def test_missing_date_is_sent_back_and_model_asks():
+    client = FakeClient(
+        tool_response({**SEARCH_ARGS, "departure_date": "2026-11-03", "date_quote": ""}),
+        text_response("What date would you like to fly?"),
+    )
+    response = chat(client, "Business class from Chicago to Tokyo")
+    assert response.reply == "What date would you like to fly?"
+    assert response.results == []
+    assert sent_function_response(client, 1)["missing"] == ["departure date"]
+
+
+def test_details_from_earlier_user_messages_count():
+    history = [
+        ChatMessage(role="user", content="Business class from Chicago to Tokyo"),
+        ChatMessage(role="assistant", content="What date would you like to fly?"),
+    ]
+    client = FakeClient(tool_response(SEARCH_ARGS), text_response("Here are 3 options."))
+    response = chat(client, "Dec 1", history)
+    assert response.results == search_awards(CRITERIA).results
+
+
+def test_assistant_messages_do_not_count_as_user_details():
+    history = [
+        ChatMessage(role="user", content="Business class from Chicago to Tokyo"),
+        ChatMessage(role="assistant", content="Did you mean Dec 1?"),
+    ]
+    client = FakeClient(tool_response(SEARCH_ARGS), text_response("What date?"))
+    response = chat(client, "Not sure", history)
+    assert response.results == []
+    assert sent_function_response(client, 1)["missing"] == ["departure date"]
 
 
 def test_plain_reply_without_tool_call():
@@ -101,7 +161,7 @@ def test_tool_call_then_summary():
     client = FakeClient(tool_response(SEARCH_ARGS), text_response("Here are 3 options."))
     response = chat(client)
     assert response.reply == "Here are 3 options."
-    assert response.results == search_awards(SearchCriteria.model_validate(SEARCH_ARGS)).results
+    assert response.results == search_awards(CRITERIA).results
     assert sent_function_response(client, 1)["count"] == len(response.results)
 
 
