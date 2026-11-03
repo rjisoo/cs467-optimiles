@@ -72,6 +72,7 @@ def test_search_maps_upstream_errors_to_documented_status(client, monkeypatch, e
 @pytest.mark.parametrize(("error", "status"), UPSTREAM_CASES)
 def test_chat_tool_reports_upstream_errors_to_llm(monkeypatch, error, status):
     monkeypatch.setattr("backend.llm.tools.search_awards", _raise(error))
-    payload, results = run_search_tool(VALID_SEARCH)
+    quotes = {"origin_quote": "SFO", "destination_quote": "NRT", "date_quote": "Dec 1"}
+    payload, results = run_search_tool({**VALID_SEARCH, **quotes}, "SFO to NRT on Dec 1")
     assert payload == {"error": UPSTREAM_STATUS_MESSAGES[status]}
     assert results == []

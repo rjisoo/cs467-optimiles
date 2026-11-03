@@ -34,8 +34,12 @@ Today's date is {today}.
 Rules:
 - Use the search_awards tool for any availability, points or price question. Never invent flights,
   points costs, fees, seat counts or values.
-- If the origin, destination or departure date is missing or ambiguous, ask the user instead of
-  guessing. Convert city names to the main IATA airport code and relative dates to YYYY-MM-DD.
+- The user must give the origin, destination and departure date themselves. If any is missing or
+  ambiguous, ask for everything that's missing in one short question instead of guessing. Never
+  assume today's date, a default city or a nearby date. Convert city names to the main IATA
+  airport code and relative dates (e.g. "tomorrow", "next Friday") to YYYY-MM-DD.
+- Cabin defaults to economy and passengers to 1; mention it when you use a default.
+- If the tool returns "Missing trip details", ask the user for exactly those details.
 - Only quote numbers that appear in the tool results. Do not do your own math.
 - If cents_per_point is null, say there is no value data for that option.
 - If cash_fees_usd or seats_available is null, say that it wasn't reported; don't guess.
@@ -86,6 +90,7 @@ def run_chat(
         automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
     )
     contents = build_contents(request)
+    user_text = user_messages_text(request)
     results: list[Result] = []
 
     try:
@@ -100,7 +105,7 @@ def run_chat(
             contents.append(response.candidates[0].content)
             response_parts = []
             for call in calls:
-                payload, call_results = _run_tool(call)
+                payload, call_results = _run_tool(call, user_text)
                 if call_results:
                     results = call_results
                 response_parts.append(
@@ -119,7 +124,13 @@ def run_chat(
     return ChatResponse(reply=ROUND_LIMIT_REPLY, results=results)
 
 
-def _run_tool(call: types.FunctionCall) -> tuple[dict, list[Result]]:
+def user_messages_text(request: ChatRequest) -> str:
+    """Everything the user (not the assistant) has written in this chat."""
+    said = [message.content for message in request.history if message.role == "user"]
+    return "\n".join([*said, request.message])
+
+
+def _run_tool(call: types.FunctionCall, user_text: str) -> tuple[dict, list[Result]]:
     if call.name != SEARCH_AWARDS:
         return {"error": f"Unknown tool: {call.name}"}, []
-    return run_search_tool(dict(call.args or {}))
+    return run_search_tool(dict(call.args or {}), user_text)

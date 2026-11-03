@@ -76,6 +76,12 @@ message into `search_awards` arguments; code validates them with `SearchCriteria
 search and computes `cents_per_point`. The model only summarizes the tool output and is told
 never to invent numbers. Each message is capped at 3 model calls (`MAX_TOOL_ROUNDS`).
 
+The origin, destination and departure date must come from the user. Along with each search the
+model sends the user's own words for them (`origin_quote`, `destination_quote`, `date_quote`);
+`llm/tools.py` checks each quote appears in the user's messages (current message plus history).
+If one is missing, no search runs and the model is told to ask, so it can't fill in today's date
+or a default city. Cabin and passengers may default (economy, 1).
+
 1. Create an API key in Google AI Studio (https://aistudio.google.com/apikey).
 2. Put it in `backend\.env` as `GEMINI_API_KEY=...`. Optionally set `GEMINI_MODEL` to override
    the default in `llm/gemini_chat.py`.
