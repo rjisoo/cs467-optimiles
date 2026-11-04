@@ -3,7 +3,7 @@ import dotenv
 import os
 import logging
 from . import APIRouterError, APIStatusError, APITimeout
-from .seatsaero_models import RawCachedSearchResponse
+from .seatsaero_models import RawCachedSearchResponse, RawGetTripResponse
 
 logger = logging.getLogger(__name__)
 
@@ -244,6 +244,20 @@ class SeatsAeroAPI(APIRouterTemplate):
         return self._sync_api_request(lambda: self.post("/refresh", payload=payload))
 
     def cached_search_to_client_json(self, params: dict) -> dict:
+        """Cached Search endpoint, return the response in client JSON format.
+        params: Dictionary of query parameters for the search.
+        return: The response in client JSON format.
+        """
         resp_raw = self.cached_search(params=params)
         resp = RawCachedSearchResponse.model_validate(resp_raw)
+        return resp.to_client_json()
+
+    def get_trip_to_client_json(self, trip_id: str, params: dict) -> dict:
+        """Get Trip endpoint, return the response in client JSON format.
+        trip_id: The ID of the trip to retrieve.
+        params: Dictionary of query parameters for the request.
+        return: The response in client JSON format.
+        """
+        resp_raw = self.get_trips(trip_id=trip_id, params=params)
+        resp = RawGetTripResponse.model_validate(resp_raw)
         return resp.to_client_json()
