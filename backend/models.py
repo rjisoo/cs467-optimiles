@@ -42,10 +42,14 @@ class Result(BaseModel):
     cabin: Cabin
     points_cost: int = Field(ge=0, description="Points per passenger")
     cash_fees_usd: float | None = Field(
-        default=None, ge=0, description="Taxes and fees per passenger; null when not reported"
+        default=None,
+        ge=0,
+        description="Taxes and fees per passenger; null when not reported",
     )
     seats_available: int | None = Field(
-        default=None, ge=0, description="Seats left; null when the program doesn't report a count"
+        default=None,
+        ge=0,
+        description="Seats left; null when the program doesn't report a count",
     )
     cents_per_point: float | None = Field(
         default=None,
@@ -55,6 +59,99 @@ class Result(BaseModel):
 
 class SearchResponse(BaseModel):
     results: list[Result]
+
+
+# Seats.Aero Cached Search Models
+class CabinAvailability(BaseModel):
+    available: bool
+    airlines: list[str]
+    remaining_seats: int | None = Field(
+        default=None, description="Seats left; null when unavailable or not reported"
+    )
+    from_points: int | None = Field(
+        default=None, description="Points cost; null when unavailable or not reported"
+    )
+    taxes_fees: int | float | None = Field(
+        default=None,
+        description="Taxes and fees in minor units; null when unavailable or not reported",
+    )
+    direct_available: bool
+    direct_airlines: list[str]
+    direct_remaining_seats: int | None = None
+    direct_from_points: int | None = None
+    direct_tax_fees: int | float | None = None
+
+
+class AvailabilityCabins(BaseModel):
+    economy: CabinAvailability
+    premium: CabinAvailability
+    business: CabinAvailability
+    first: CabinAvailability
+
+
+class AvailabilityRecord(BaseModel):
+    availability_id: str
+    date: date
+    origin_airport: str
+    destination_airport: str
+    taxes_currency: str = Field(description="Currency of taxes and fees")
+    source: str = Field(description="Award program source")
+    provider_updated_at: str | None = Field(
+        default=None, description="ISO format timestamp of the last provider's update"
+    )
+    cabins: AvailabilityCabins
+
+
+# Seats.Aero Cached Search Response Models
+class CachedSearchResponse(BaseModel):
+    results: list[AvailabilityRecord]
+    has_more: bool
+    cursor: int | str | None = None
+    count: int = Field(ge=0)
+
+
+# Seats.Aero Get Trips Models
+class GetTripBookingLink(BaseModel):
+    label: str | None = None
+    url: str | None = None
+    primary: bool = False
+
+
+class GetTripSegment(BaseModel):
+    flight_number: str | None = None
+    origin_airport: str | None = None
+    destination_airport: str | None = None
+    departs_at_local: str | None = None
+    arrives_at_local: str | None = None
+
+
+class GetTripFlight(BaseModel):
+    trip_id: str
+    availability_id: str
+    source: str
+    cabin: str
+    points: int | float | None = Field(description="Points cost")
+    taxes_minor: int | float | None = Field(
+        default=None, description="Taxes and fees in minor units of taxes_currency"
+    )
+    taxes_currency: str | None = None
+    reported_seats: int | float | None = Field(
+        description="Seats reported by the provider"
+    )
+    departs_at_local: str
+    arrives_at_local: str
+    duration_minutes: int
+    stops: int
+    carriers: list[str]
+    provider_updated_at: str | None = None
+    flight_numbers: list[str]
+    segments: list[GetTripSegment]
+
+
+# Seats.Aero Get Trips Response Models
+class GetTripResponse(BaseModel):
+    booking_links: list[GetTripBookingLink]
+    trips: list[GetTripFlight]
 
 
 class ChatMessage(BaseModel):
