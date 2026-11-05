@@ -38,7 +38,7 @@ http://localhost:5000/api/health.
 
 ## API documentation
 
-Open [Swagger UI](http://localhost:5000/docs) to browse all three API endpoints,
+Open [Swagger UI](http://localhost:5000/docs) to browse all four API endpoints,
 inspect request and response schemas, and send requests with **Try it out**.
 The backend root URL redirects here. The [OpenAPI JSON](http://localhost:5000/openapi.json)
 is also available for API clients and tooling.
@@ -65,15 +65,21 @@ Set `SEATSAERO_BASE_URL` (`https://seats.aero/partnerapi`) and `SEATSAERO_TOKEN`
 `backend\.env`. The app won't start without the base URL. Without the token, searches return
 502 "Award search is unavailable".
 
-Cached search has no cash fares or taxes, so `cash_fees_usd` and `cents_per_point` are `null`.
+Cached search has no comparable cash fares, so `cents_per_point` remains `null`. Reported positive USD taxes are converted from cents into `cash_fees_usd`; unreported or non-USD summary fees stay `null`.
 `seats_available` is `null` when the program doesn't report a seat count; those results are kept
 for any passenger count. Tests replace the seats.aero call with canned rows (`tests/conftest.py`).
+
+## Trip details
+
+Search/chat results include a nullable `availability_id` copied from the provider record. Request `GET /api/availability/{availability_id}/trips` to load that record's reported itineraries. IDs must contain 1–200 ASCII letters, digits, underscores or hyphens; invalid IDs return 400 before contacting the provider. Older results without an ID cannot be expanded safely.
+
+The response is `{availability_id, booking_links, trips}` using `GetTripResponse`. `search.py:get_availability_trips` calls the existing Seats.aero trip mapper, validates numeric fields, and rejects mismatched record IDs or malformed responses. Empty trip arrays are successful responses; upstream failures retain the documented 502/503/504 handling. No LLM call is needed for this endpoint. Returned timestamps retain their provider text; fee amounts are minor units with nullable currency, and missing segment schedules remain null. These details may differ from the cached summary and do not guarantee party availability.
 
 ## Chat / LLM
 
 `/api/chat` uses Google Gemini (`google-genai` SDK) with tool calling. The model turns the
 message into `search_awards` arguments; code validates them with `SearchCriteria`, runs the
-search and computes `cents_per_point`. The model only summarizes the tool output and is told
+search and returns its structured results. CPP remains unreported without comparable cash fares. The model only summarizes the tool output and is told
 never to invent numbers. Each message is capped at 3 model calls (`MAX_TOOL_ROUNDS`).
 
 The origin, destination and departure date must come from the user. Along with each search the
