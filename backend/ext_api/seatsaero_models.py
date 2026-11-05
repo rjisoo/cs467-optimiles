@@ -194,6 +194,7 @@ class RawCachedSearchResponse(SeatsAeroModel):
                     "date": record.date.isoformat(),
                     "origin_airport": record.route.origin_airport,
                     "destination_airport": record.route.destination_airport,
+                    "taxes_currency": record.taxes_currency,
                     "source": record.source,
                     "provider_updated_at": (
                         record.provider_updated_at.isoformat()
