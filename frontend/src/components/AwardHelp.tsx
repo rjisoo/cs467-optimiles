@@ -30,7 +30,7 @@ function AwardHelp({ onOpen }: AwardHelpProps) {
         </DialogDescription>
         <p>
           Describe your trip in the chat box, or enter your route, date, adults, and cabin choices
-          in the form. These inputs are not linked in this preview.
+          in the form. Either option sends your request to the chat service.
         </p>
         <p>Your draft resets when you reload this page or choose New trip.</p>
       </DialogContent>

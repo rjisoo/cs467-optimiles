@@ -8,7 +8,6 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
 import Icon from './Icon'
-import { demoRequest } from '../services/mock-search'
 import { cabinChoices, type TripField, type TripFieldErrors } from '../lib/trip-validation'
 
 export type TripDraft = {
@@ -152,7 +151,6 @@ function TripEntry({
       <form
         className="entry-card chat-entry"
         aria-labelledby="chat-title"
-        aria-describedby="preview-notice"
         noValidate
         onSubmit={(event) => {
           event.preventDefault()
@@ -175,7 +173,7 @@ function TripEntry({
             rows={2}
             value={draft.message}
             disabled={pending}
-            placeholder={composerOnly ? undefined : demoRequest}
+            placeholder={composerOnly ? undefined : 'Where would you like to go, and when?'}
             onKeyDown={(event) => {
               const isSubmitKey = event.key === 'Enter'
                 && !event.shiftKey
@@ -195,7 +193,7 @@ function TripEntry({
           />
           <Button
             ref={actionRef}
-            className={`preview-action send-request${pending ? ' cancel-request' : ''}`}
+            className={`trip-action send-request${pending ? ' cancel-request' : ''}`}
             type={pending ? 'button' : 'submit'}
             aria-label={pending ? 'Cancel search' : 'Send request'}
             disabled={!pending && !draft.message.trim()}
@@ -218,7 +216,6 @@ function TripEntry({
             ref={formRef}
             className="entry-card details-entry"
             aria-labelledby="form-title"
-            aria-describedby="preview-notice"
             noValidate
             onSubmit={(event) => {
               event.preventDefault()
@@ -317,8 +314,7 @@ function TripEntry({
                 {fieldError('cabins')}
               </fieldset>
               <div className="form-footer">
-                <span>Only the disclosed demo scenario is supported.</span>
-                <Button className="preview-action" type="submit" disabled={pending}>
+                <Button className="trip-action" type="submit" disabled={pending}>
                   <Icon name="search" />
                   Search awards
                 </Button>

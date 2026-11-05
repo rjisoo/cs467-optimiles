@@ -1,81 +1,59 @@
 import { act, renderHook } from '@testing-library/react'
-import { beforeEach, expect, it, vi } from 'vitest'
-import { getMockResults, demoCriteria, searchMock } from './services/mock-search'
-import useMockJourney from './useMockJourney'
+import { expect, it, vi } from 'vitest'
+import useChatJourney from './useChatJourney'
 
-vi.mock('./services/mock-search', async (importOriginal) => ({
-  ...await importOriginal<typeof import('./services/mock-search')>(), searchMock: vi.fn(),
-}))
-const fetchMock = vi.fn<typeof fetch>()
-beforeEach(() => {
-  fetchMock.mockReset().mockResolvedValue(new Response('unused, non-JSON reply'))
-  vi.stubGlobal('fetch', fetchMock)
-  vi.mocked(searchMock).mockImplementation(async (criteria) => getMockResults(criteria))
-})
-
-function journey(message = 'abd') {
-  const hook = renderHook(() => useMockJourney(true))
-  act(() => hook.result.current.setDraft((draft) => ({ ...draft, message })))
-  return hook
-}
-
-it('rejects blank messages and sends only the actual text once', async () => {
-  const { result } = journey(' \n ')
-  act(() => result.current.submit('chat'))
-  expect(fetchMock).not.toHaveBeenCalled()
+it('sends the actual text verbatim and stores the returned reply', async () => {
+  const response = { reply: 'What date would you like to travel?', results: [] }
+  vi.mocked(fetch).mockResolvedValueOnce(Response.json(response))
   const message = '  abd "quoted"\n안녕  '
+  const { result } = renderHook(useChatJourney)
   act(() => result.current.setDraft((draft) => ({ ...draft, message })))
-  await act(async () => {
-    result.current.submit('chat')
-    result.current.submit('chat')
-  })
-  expect(fetchMock).toHaveBeenCalledExactlyOnceWith('/api/chat', {
+  await act(async () => result.current.submit('chat'))
+  expect(fetch).toHaveBeenCalledExactlyOnceWith('/api/chat', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message }), signal: expect.any(AbortSignal),
   })
-  expect(result.current.turns.at(-1)).toMatchObject({
-    status: 'success', results: getMockResults(demoCriteria),
-  })
+  expect(result.current.turns[0]).toMatchObject({ status: 'success', response })
 })
 
 it.each([
-  [400, /rejected this message/],
-  [429, /Too many requests/],
-  [503, /service is unavailable/],
-  [404, /HTTP 404/],
-  [null, /Check your connection/],
-])('reports %s failure and clears the error when retrying', async (status, message) => {
-  if (status === null) fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'))
-  else fetchMock.mockResolvedValueOnce(new Response(null, { status }))
-  const { result } = journey()
+  [400, /rejected this message/], [429, /Too many requests/],
+  [503, /service is unavailable/], [404, /HTTP 404/], [null, /Check your connection/],
+])('reports %s request failures and retains the submitted draft', async (status, message) => {
+  if (status === null) vi.mocked(fetch).mockRejectedValueOnce(new TypeError('Failed to fetch'))
+  else vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status }))
+  const { result } = renderHook(useChatJourney)
+  act(() => result.current.setDraft((draft) => ({ ...draft, message: 'Search' })))
   await act(async () => result.current.submit('chat'))
-  const failed = result.current.turns[1]
-  expect(failed.status).toBe('failed')
-  expect(failed.error).toMatch(message)
-  expect(result.current.draft.message).toBe('abd')
-  act(() => result.current.setDraft((draft) => ({ ...draft, message: 'Keep this edit' })))
-  await act(async () => result.current.retry(failed))
-  expect(fetchMock.mock.calls[1][1]?.body).toBe(JSON.stringify({ message: 'abd' }))
-  expect(result.current.turns[1]).toMatchObject({ status: 'success', error: undefined })
-  expect(result.current.draft.message).toBe('Keep this edit')
+  expect(result.current.turns[0]).toMatchObject({ status: 'failed', error: expect.stringMatching(message) })
+  expect(result.current.draft.message).toBe('Search')
 })
 
-it.each(['cancel', 'reset', 'unmount'] as const)('%s aborts the HTTP request', async (action) => {
-  let reject!: (error: Error) => void
-  fetchMock.mockReturnValueOnce(new Promise((_resolve, fail) => { reject = fail }))
-  const { result, unmount } = journey()
-  act(() => result.current.submit('chat'))
-  const signal = fetchMock.mock.calls[0][1]?.signal
-  act(() => action === 'unmount' ? unmount() : result.current[action]())
-  expect(signal?.aborted).toBe(true)
-  await act(async () => reject(new DOMException('Canceled', 'AbortError')))
-  if (action === 'cancel') expect(result.current.turns[1].status).toBe('canceled')
-  if (action === 'reset') expect(result.current.turns).toHaveLength(0)
+it.each(['not JSON', JSON.stringify({ reply: 'Incomplete response' })])('reports invalid response %s without fallback results', async (body) => {
+  vi.mocked(fetch).mockResolvedValueOnce(new Response(body))
+  const { result } = renderHook(useChatJourney)
+  act(() => result.current.setDraft((draft) => ({ ...draft, message: 'Search' })))
+  await act(async () => result.current.submit('chat'))
+  expect(result.current.turns[0]).toMatchObject({ status: 'failed', error: expect.stringContaining('invalid response') })
+  expect(result.current.turns[0].response).toBeUndefined()
 })
 
-it('keeps form submissions local', async () => {
-  const { result } = journey()
+it('sends each exact form date through chat without the old route/date restriction', async () => {
+  vi.mocked(fetch).mockImplementation(async () => Response.json({ reply: 'Searching requested date', results: [] }))
+  const { result } = renderHook(useChatJourney)
+  act(() => result.current.setDraft({
+    message: 'Keep my unsent message', origin: ' lax ', destination: ' jfk ',
+    departureDate: '2026-12-01', adults: '2', cabins: ['Economy', 'Business'],
+  }))
   await act(async () => result.current.submit('form'))
-  expect(fetchMock).not.toHaveBeenCalled()
-  expect(result.current.turns[1].status).toBe('success')
+  expect(vi.mocked(fetch).mock.calls[0][1]?.body).toBe(JSON.stringify({
+    message: 'LAX to JFK, 2026-12-01, one way, 2 adults. Compare Economy, Business.',
+  }))
+  act(() => result.current.setDraft((draft) => ({ ...draft, departureDate: '2026-12-02' })))
+  await act(async () => result.current.submit('form'))
+  expect(vi.mocked(fetch).mock.calls[1][1]?.body).toBe(JSON.stringify({
+    message: 'LAX to JFK, 2026-12-02, one way, 2 adults. Compare Economy, Business.',
+  }))
+  expect(result.current.turns.map((turn) => turn.status)).toEqual(['success', 'success'])
+  expect(result.current.draft.message).toBe('Keep my unsent message')
 })
