@@ -248,6 +248,7 @@ class SeatsAeroAPI(APIRouterTemplate):
         """Cached Search endpoint, return the response in client JSON format.
         params: Dictionary of query parameters for the search.
         return: The response in client JSON format.
+        raises APIRouterError (when the upstream response is invalid or cannot be converted to client JSON).
         """
         resp_raw = self.cached_search(params=params)
         return self._to_client_json(RawCachedSearchResponse, resp_raw)
@@ -257,6 +258,7 @@ class SeatsAeroAPI(APIRouterTemplate):
         trip_id: The ID of the trip to retrieve.
         params: Dictionary of query parameters for the request.
         return: The response in client JSON format.
+        raises APIRouterError (when the upstream response is invalid or cannot be converted to client JSON).
         """
         resp_raw = self.get_trips(trip_id=trip_id, params=params)
         return self._to_client_json(RawGetTripResponse, resp_raw)
