@@ -3,7 +3,14 @@
 from pydantic.json_schema import models_json_schema
 
 from backend.errors import UPSTREAM_STATUS_MESSAGES
-from backend.models import ChatRequest, ChatResponse, SearchCriteria, SearchResponse
+from backend.models import (
+    CachedSearchResponse,
+    ChatRequest,
+    ChatResponse,
+    GetTripResponse,
+    SearchCriteria,
+    SearchResponse,
+)
 
 
 def _error_response(description, message):
@@ -20,8 +27,12 @@ def _error_response(description, message):
 
 # Award search failures; /api/chat reports these in the reply instead.
 _UPSTREAM_RESPONSES = {
-    "502": _error_response("Award search service failed", UPSTREAM_STATUS_MESSAGES[502]),
-    "503": _error_response("Award search usage limit reached", UPSTREAM_STATUS_MESSAGES[503]),
+    "502": _error_response(
+        "Award search service failed", UPSTREAM_STATUS_MESSAGES[502]
+    ),
+    "503": _error_response(
+        "Award search usage limit reached", UPSTREAM_STATUS_MESSAGES[503]
+    ),
     "504": _error_response("Award search timed out", UPSTREAM_STATUS_MESSAGES[504]),
 }
 
@@ -34,7 +45,9 @@ def _post_operation(
         "description": description,
         "requestBody": {
             "required": True,
-            "content": {"application/json": {"schema": request_schema, "example": example}},
+            "content": {
+                "application/json": {"schema": request_schema, "example": example}
+            },
         },
         "responses": {
             "200": {
@@ -45,7 +58,9 @@ def _post_operation(
                 "description": "Invalid or missing JSON request body",
                 "content": {
                     "application/json": {
-                        "schema": {"$ref": "#/components/schemas/ValidationErrorResponse"}
+                        "schema": {
+                            "$ref": "#/components/schemas/ValidationErrorResponse"
+                        }
                     }
                 },
             },
@@ -62,6 +77,8 @@ def build_openapi(server_url: str = "/") -> dict:
             (ChatRequest, "validation"),
             (SearchResponse, "serialization"),
             (ChatResponse, "serialization"),
+            (CachedSearchResponse, "serialization"),
+            (GetTripResponse, "serialization"),
         ],
         ref_template="#/components/schemas/{model}",
     )
@@ -69,7 +86,9 @@ def build_openapi(server_url: str = "/") -> dict:
     schemas["ErrorResponse"] = {
         "type": "object",
         "required": ["error"],
-        "properties": {"error": {"type": "string", "description": "Message safe to show users"}},
+        "properties": {
+            "error": {"type": "string", "description": "Message safe to show users"}
+        },
     }
     schemas["ValidationErrorResponse"] = {
         "type": "object",
@@ -85,7 +104,9 @@ def build_openapi(server_url: str = "/") -> dict:
                         "type": {"type": "string"},
                         "loc": {
                             "type": "array",
-                            "items": {"anyOf": [{"type": "string"}, {"type": "integer"}]},
+                            "items": {
+                                "anyOf": [{"type": "string"}, {"type": "integer"}]
+                            },
                         },
                         "msg": {"type": "string"},
                         "input": {},
@@ -116,7 +137,9 @@ def build_openapi(server_url: str = "/") -> dict:
                                     "schema": {
                                         "type": "object",
                                         "required": ["status"],
-                                        "properties": {"status": {"type": "string", "const": "ok"}},
+                                        "properties": {
+                                            "status": {"type": "string", "const": "ok"}
+                                        },
                                     },
                                     "example": {"status": "ok"},
                                 }
@@ -150,7 +173,10 @@ def build_openapi(server_url: str = "/") -> dict:
                     "returns a message that chat is not connected yet.",
                     refs[ChatRequest, "validation"],
                     refs[ChatResponse, "serialization"],
-                    {"message": "Business class from SFO to Tokyo on December 1, 2026", "history": []},
+                    {
+                        "message": "Business class from SFO to Tokyo on December 1, 2026",
+                        "history": [],
+                    },
                 )
             },
         },
