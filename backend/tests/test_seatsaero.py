@@ -1,8 +1,10 @@
 import asyncio
 import pytest
+import json
 from unittest.mock import AsyncMock, Mock
 
 from backend.ext_api import APIStatusError, SeatsAeroAPI
+from backend.ext_api.seatsaero_models import RawCachedSearchResponse, RawGetTripResponse
 
 
 @pytest.mark.parametrize(
@@ -112,3 +114,320 @@ def test_sync_cached_search_records_usage_and_reraises_status_error():
 
     assert raised.value is error
     api.record_usage.assert_called_once_with(1)
+
+
+resp_raw = """{
+    "data": [
+        {
+            "ID": "test-availability-1",
+            "RouteID": "test-route-1",
+            "Route": {
+                "ID": "test-route-1",
+                "OriginAirport": "AAA",
+                "OriginRegion": "Test Region",
+                "DestinationAirport": "BBB",
+                "DestinationRegion": "Test Region",
+                "Distance": 100,
+                "Source": "test-provider",
+                "Connecting": false
+            },
+            "Date": "2030-01-01",
+            "ParsedDate": "2030-01-01T00:00:00Z",
+            "YAvailable": true,
+            "WAvailable": false,
+            "JAvailable": true,
+            "FAvailable": false,
+            "YAvailableRaw": true,
+            "WAvailableRaw": false,
+            "JAvailableRaw": true,
+            "FAvailableRaw": false,
+            "YMileageCost": "16000",
+            "WMileageCost": "0",
+            "JMileageCost": "74000",
+            "FMileageCost": "0",
+            "YDirectMileageCost": 16000,
+            "WDirectMileageCost": 0,
+            "JDirectMileageCost": 74000,
+            "FDirectMileageCost": 0,
+            "TaxesCurrency": "USD",
+            "YTotalTaxes": 50,
+            "WTotalTaxes": 0,
+            "JTotalTaxes": 25,
+            "FTotalTaxes": 0,
+            "YDirectTotalTaxes": "50",
+            "WDirectTotalTaxes": 0,
+            "JDirectTotalTaxes": 25,
+            "FDirectTotalTaxes": 0,
+            "YRemainingSeats": 7,
+            "WRemainingSeats": 0,
+            "JRemainingSeats": 1,
+            "FRemainingSeats": 0,
+            "YDirectRemainingSeats": 2,
+            "WDirectRemainingSeats": 0,
+            "JDirectRemainingSeats": 1,
+            "FDirectRemainingSeats": 0,
+            "YAirlines": "TEST-A, TEST-B",
+            "WAirlines": "",
+            "JAirlines": "TEST-B",
+            "FAirlines": "",
+            "YDirectAirlines": "TEST-A",
+            "WDirectAirlines": "",
+            "JDirectAirlines": "TEST-B",
+            "FDirectAirlines": "",
+            "YDirect": true,
+            "WDirect": false,
+            "JDirect": true,
+            "FDirect": false,
+            "YDirectRaw": true,
+            "WDirectRaw": false,
+            "JDirectRaw": true,
+            "FDirectRaw": false,
+            "Source": "test-provider",
+            "CreatedAt": "2030-01-01T07:43:25Z",
+            "UpdatedAt": "2030-01-01T21:15:58Z",
+            "AvailabilityTrips": []
+        }
+    ],
+    "count": 1,
+    "hasMore": false,
+    "cursor": 123456
+}"""
+
+
+def test_parses_and_validates_raw_response():
+    response = RawCachedSearchResponse.model_validate(json.loads(resp_raw))
+
+    assert response.count == 1
+    assert response.has_more is False
+    assert response.cursor == 123456
+    assert response.data[0].availability_id == "test-availability-1"
+    assert response.data[0].route.origin_airport == "AAA"
+    assert response.data[0].raw_cabins["economy"].available is True
+    assert response.data[0].raw_cabins["economy"].available_raw is True
+    assert response.data[0].raw_cabins["economy"].airlines == "TEST-A, TEST-B"
+    assert response.data[0].raw_cabins["economy"].airlines_direct == "TEST-A"
+    assert response.data[0].raw_cabins["economy"].from_points == "16000"
+    assert response.data[0].raw_cabins["economy"].from_points_direct == 16000
+
+
+def test_maps_validated_raw_response_to_client_json():
+    response = RawCachedSearchResponse.model_validate(json.loads(resp_raw))
+
+    client_json = response.to_client_json()
+    validated_client_json = json.loads(json.dumps(client_json))
+
+    assert validated_client_json == {
+        "results": [
+            {
+                "availability_id": "test-availability-1",
+                "date": "2030-01-01",
+                "origin_airport": "AAA",
+                "destination_airport": "BBB",
+                "source": "test-provider",
+                "provider_updated_at": "2030-01-01T21:15:58+00:00",
+                "cabins": {
+                    "economy": {
+                        "available": True,
+                        "airlines": ["TEST-A", "TEST-B"],
+                        "remaining_seats": 7,
+                        "from_points": 16000,
+                        "taxes_fees": 50,
+                        "direct_available": True,
+                        "direct_airlines": ["TEST-A"],
+                        "direct_remaining_seats": 2,
+                        "direct_from_points": 16000,
+                        "direct_tax_fees": "50",
+                    },
+                    "premium": {
+                        "available": False,
+                        "airlines": [],
+                        "remaining_seats": 0,
+                        "from_points": 0,
+                        "taxes_fees": 0,
+                        "direct_available": False,
+                        "direct_airlines": [],
+                        "direct_remaining_seats": 0,
+                        "direct_from_points": 0,
+                        "direct_tax_fees": 0,
+                    },
+                    "business": {
+                        "available": True,
+                        "airlines": ["TEST-B"],
+                        "remaining_seats": 1,
+                        "from_points": 74000,
+                        "taxes_fees": 25,
+                        "direct_available": True,
+                        "direct_airlines": ["TEST-B"],
+                        "direct_remaining_seats": 1,
+                        "direct_from_points": 74000,
+                        "direct_tax_fees": 25,
+                    },
+                    "first": {
+                        "available": False,
+                        "airlines": [],
+                        "remaining_seats": 0,
+                        "from_points": 0,
+                        "taxes_fees": 0,
+                        "direct_available": False,
+                        "direct_airlines": [],
+                        "direct_remaining_seats": 0,
+                        "direct_from_points": 0,
+                        "direct_tax_fees": 0,
+                    },
+                },
+            }
+        ],
+        "has_more": False,
+        "cursor": 123456,
+        "count": 1,
+    }
+
+
+def test_map_get_trip_raw_response_to_client_json():
+    response = RawGetTripResponse.model_validate(
+        {
+            "booking_links": [
+                {
+                    "label": "Open United booking search",
+                    "url": "https://www.united.com/en/us/book-flight/united-reservations",
+                    "primary": True,
+                }
+            ],
+            "trips": [
+                {
+                    "trip_id": "trip-demo-1",
+                    "availability_id": "avail-demo-1",
+                    "source": "united",
+                    "cabin": "economy",
+                    "points": 15000,
+                    "taxes_minor": 560,
+                    "taxes_currency": "USD",
+                    "reported_seats": 2,
+                    "departs_at_local": "2026-10-31T09:00:00",
+                    "arrives_at_local": "2026-10-31T12:10:00",
+                    "duration_minutes": 370,
+                    "stops": 0,
+                    "carriers": ["UA"],
+                    "provider_updated_at": "2026-10-28T12:00:00Z",
+                    "flight_numbers": ["UA123"],
+                    "segments": [
+                        {
+                            "flight_number": "UA123",
+                            "origin_airport": "JFK",
+                            "destination_airport": "SEA",
+                            "departs_at_local": "2026-10-31T09:00:00",
+                            "arrives_at_local": "2026-10-31T12:10:00",
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+
+    assert response.to_client_json() == {
+        "booking_links": [
+            {
+                "label": "Open United booking search",
+                "url": "https://www.united.com/en/us/book-flight/united-reservations",
+                "primary": True,
+            }
+        ],
+        "trips": [
+            {
+                "trip_id": "trip-demo-1",
+                "availability_id": "avail-demo-1",
+                "source": "united",
+                "cabin": "economy",
+                "points": 15000,
+                "taxes_minor": 560,
+                "taxes_currency": "USD",
+                "reported_seats": 2,
+                "departs_at_local": "2026-10-31T09:00:00",
+                "arrives_at_local": "2026-10-31T12:10:00",
+                "duration_minutes": 370,
+                "stops": 0,
+                "carriers": ["UA"],
+                "provider_updated_at": "2026-10-28T12:00:00Z",
+                "flight_numbers": ["UA123"],
+                "segments": [
+                    {
+                        "flight_number": "UA123",
+                        "origin_airport": "JFK",
+                        "destination_airport": "SEA",
+                        "departs_at_local": "2026-10-31T09:00:00",
+                        "arrives_at_local": "2026-10-31T12:10:00",
+                    }
+                ],
+            }
+        ],
+    }
+
+
+def test_single_entry_and_normalizes_trip_fields():
+    response = RawGetTripResponse.model_validate(
+        {
+            "data": [
+                {
+                    "ID": "trip-demo-1",
+                    "AvailabilityID": "avail-demo-1",
+                    "Source": "united",
+                    "Cabin": "economy",
+                    "MileageCost": 15000,
+                    "TotalTaxes": 0,
+                    "RemainingSeats": 2,
+                    "DepartsAt": "2026-10-31T09:00:00Z",
+                    "ArrivesAt": "2026-10-31T12:10:00Z",
+                    "TotalDuration": 370,
+                    "Stops": 0,
+                    "Carriers": "UA",
+                    "UpdatedAt": "2026-10-28T12:00:00Z",
+                    "FlightNumbers": "UA123",
+                    "AvailabilitySegments": [
+                        {
+                            "FlightNumber": "UA123",
+                            "OriginAirport": "JFK",
+                            "DestinationAirport": "SEA",
+                            "DepartsAt": "2026-10-31T09:00:00Z",
+                            "ArrivesAt": "2026-10-31T12:10:00Z",
+                        }
+                    ],
+                }
+            ],
+            "booking_links": [
+                {
+                    "label": "Open booking",
+                    "link": "https://example.com/book",
+                    "primary": True,
+                }
+            ],
+        }
+    )
+
+    result = response.to_client_json()
+
+    assert result["trips"][0]["trip_id"] == "trip-demo-1"
+    assert result["trips"][0]["availability_id"] == "avail-demo-1"
+    assert result["trips"][0]["taxes_minor"] == 0
+    assert result["trips"][0]["taxes_currency"] is None
+    assert result["trips"][0]["departs_at_local"] == "2026-10-31T09:00:00Z"
+    assert result["trips"][0]["carriers"] == ["UA"]
+    assert result["trips"][0]["flight_numbers"] == ["UA123"]
+    assert result["booking_links"][0]["url"] == "https://example.com/book"
+    assert result["trips"][0]["segments"][0]["origin_airport"] == "JFK"
+    assert result["trips"][0]["segments"][0]["arrives_at_local"] == (
+        "2026-10-31T12:10:00Z"
+    )
+
+
+def test_empty_get_trips_response_to_client_json():
+    response = RawGetTripResponse.model_validate(
+        {
+            "data": [],
+            "booking_links": [],
+        }
+    )
+
+    assert response.to_client_json() == {
+        "booking_links": [],
+        "trips": [],
+    }
