@@ -223,6 +223,7 @@ def test_maps_validated_raw_response_to_client_json():
                 "date": "2030-01-01",
                 "origin_airport": "AAA",
                 "destination_airport": "BBB",
+                "taxes_currency": "USD",
                 "source": "test-provider",
                 "provider_updated_at": "2030-01-01T21:15:58+00:00",
                 "cabins": {
