@@ -124,8 +124,12 @@ class RawCachedSearchResponse(SeatsAeroModel):
     def to_client_json(self) -> dict[str, Any]:
         """Convert the raw cached search response to a client-facing API format."""
 
-        def parse_airlines(value: str) -> list[str]:
-            return [airline.strip() for airline in value.split(",") if airline.strip()]
+        def parse_airlines(value: str|list|None) -> list[str]:
+            if isinstance(value, str):
+                return [airline.strip() for airline in value.split(",") if airline.strip()]
+            if isinstance(value, list):
+                return [str(airline).strip() for airline in value if str(airline).strip()]
+            return []
 
         def parse_number(value: RawNumber) -> RawNumber:
             """Parse a raw number value, converting it to int or float if possible."""
@@ -139,30 +143,49 @@ class RawCachedSearchResponse(SeatsAeroModel):
                         return value
             return value
 
+        def validate_availability_on_value(value: RawNumber, available: bool | None) -> RawNumber:
+            """Returns None if the cabin is not available or the value is 0."""
+            if not available or not value:
+                return None
+            return value
+
         results = []
         for record in self.data:
             raw_fields = record.model_extra or {}
             cabins = {}
             for cabin, prefix in RawAvailabilityRecord.prefixes_cabin.items():
+                available = getattr(record, f"{cabin}_available")
+                direct_available = getattr(record, f"{cabin}_available_direct")
                 cabins[cabin] = {
-                    "available": getattr(record, f"{cabin}_available"),
+                    "available": available,
                     "airlines": parse_airlines(raw_fields.get(f"{prefix}Airlines")),
-                    "remaining_seats": parse_number(
-                        raw_fields.get(f"{prefix}RemainingSeats")
+                    "remaining_seats": validate_availability_on_value(
+                        parse_number(raw_fields.get(f"{prefix}RemainingSeats")),
+                        available,
                     ),
-                    "from_points": parse_number(raw_fields.get(f"{prefix}MileageCost")),
-                    "taxes_fees": raw_fields.get(f"{prefix}TotalTaxes"),
-                    "direct_available": getattr(record, f"{cabin}_available_direct"),
+                    "from_points": validate_availability_on_value(
+                        parse_number(raw_fields.get(f"{prefix}MileageCost")), available
+                    ),
+                    "taxes_fees": validate_availability_on_value(
+                        parse_number(raw_fields.get(f"{prefix}TotalTaxes")),
+                        available,
+                    ),
+                    "direct_available": direct_available,
                     "direct_airlines": parse_airlines(
                         raw_fields.get(f"{prefix}DirectAirlines")
                     ),
-                    "direct_remaining_seats": parse_number(
-                        raw_fields.get(f"{prefix}DirectRemainingSeats")
+                    "direct_remaining_seats": validate_availability_on_value(
+                        parse_number(raw_fields.get(f"{prefix}DirectRemainingSeats")),
+                        direct_available,
                     ),
-                    "direct_from_points": parse_number(
-                        raw_fields.get(f"{prefix}DirectMileageCost")
+                    "direct_from_points": validate_availability_on_value(
+                        parse_number(raw_fields.get(f"{prefix}DirectMileageCost")),
+                        direct_available,
                     ),
-                    "direct_tax_fees": raw_fields.get(f"{prefix}DirectTotalTaxes"),
+                    "direct_tax_fees": validate_availability_on_value(
+                        parse_number(raw_fields.get(f"{prefix}DirectTotalTaxes")),
+                        direct_available,
+                    ),
                 }
 
             results.append(
