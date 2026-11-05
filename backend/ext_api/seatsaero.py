@@ -2,6 +2,7 @@ from .api_template import APIRouterTemplate
 import dotenv
 import os
 import logging
+from pydantic import ValidationError
 from . import APIRouterError, APIStatusError, APITimeout
 from .seatsaero_models import RawCachedSearchResponse, RawGetTripResponse
 
@@ -249,8 +250,7 @@ class SeatsAeroAPI(APIRouterTemplate):
         return: The response in client JSON format.
         """
         resp_raw = self.cached_search(params=params)
-        resp = RawCachedSearchResponse.model_validate(resp_raw)
-        return resp.to_client_json()
+        return self._to_client_json(RawCachedSearchResponse, resp_raw)
 
     def get_trip_to_client_json(self, trip_id: str, params: dict) -> dict:
         """Get Trip endpoint, return the response in client JSON format.
@@ -259,5 +259,16 @@ class SeatsAeroAPI(APIRouterTemplate):
         return: The response in client JSON format.
         """
         resp_raw = self.get_trips(trip_id=trip_id, params=params)
-        resp = RawGetTripResponse.model_validate(resp_raw)
-        return resp.to_client_json()
+        return self._to_client_json(RawGetTripResponse, resp_raw)
+
+    @staticmethod
+    def _to_client_json(model, resp_raw: dict) -> dict:
+        """Validate a raw upstream response and convert it to client JSON.
+        Upstream schema problems are wrapped so they aren't mistaken for bad client input.
+        raises APIRouterError.
+        """
+        try:
+            return model.model_validate(resp_raw).to_client_json()
+        except (ValidationError, TypeError, ValueError) as e:
+            logging.error("Unexpected SeatsAero response shape: %s", e)
+            raise APIRouterError(f"Unexpected SeatsAero response: {e}") from e
