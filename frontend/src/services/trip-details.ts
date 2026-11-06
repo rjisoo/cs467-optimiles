@@ -1,5 +1,7 @@
 export type FlightSegment = {
   flight_number: string | null
+  carrier: string | null
+  carrier_name: string | null
   origin_airport: string | null
   destination_airport: string | null
   departs_at_local: string | null
@@ -12,6 +14,7 @@ export type FlightTrip = {
   source: string
   cabin: string
   points: number | null
+  cash_fees_usd: number | null
   taxes_minor: number | null
   taxes_currency: string | null
   reported_seats: number | null
@@ -20,6 +23,7 @@ export type FlightTrip = {
   duration_minutes: number
   stops: number
   carriers: string[]
+  carrier_names: string[]
   provider_updated_at: string | null
   flight_numbers: string[]
   segments: FlightSegment[]
@@ -81,16 +85,19 @@ export function validateTripDetails(input: unknown, requestedId: string): TripDe
       return {
         trip_id: text(trip.trip_id), availability_id: requestedId, source: text(trip.source),
         cabin: cabin === 'premium' ? 'premium_economy' : cabin,
-        points: optionalNumber(trip.points), taxes_minor: optionalNumber(trip.taxes_minor),
+        points: optionalNumber(trip.points), cash_fees_usd: optionalNumber(trip.cash_fees_usd),
+        taxes_minor: optionalNumber(trip.taxes_minor),
         taxes_currency: optionalText(trip.taxes_currency), reported_seats: optionalNumber(trip.reported_seats),
         departs_at_local: text(trip.departs_at_local), arrives_at_local: text(trip.arrives_at_local),
         duration_minutes: number(trip.duration_minutes, true), stops: number(trip.stops, true),
         carriers: array(trip.carriers).map(text), flight_numbers: array(trip.flight_numbers).map(text),
+        carrier_names: array(trip.carrier_names ?? trip.carriers).map(text),
         provider_updated_at: optionalText(trip.provider_updated_at),
         segments: array(trip.segments).map((value) => {
           const segment = record(value)
           return {
             flight_number: optionalText(segment.flight_number), origin_airport: optionalText(segment.origin_airport),
+            carrier: optionalText(segment.carrier), carrier_name: optionalText(segment.carrier_name),
             destination_airport: optionalText(segment.destination_airport),
             departs_at_local: optionalText(segment.departs_at_local), arrives_at_local: optionalText(segment.arrives_at_local),
           }

@@ -16,7 +16,9 @@ class SearchCriteria(BaseModel):
     destination: str = Field(pattern=r"^[A-Z]{3}$", description="IATA airport code")
     departure_date: date
     return_date: date | None = None
-    cabin: Cabin = "economy"
+    cabin: Cabin | None = Field(
+        default=None, description="Requested cabin; omitted or null searches all available cabins"
+    )
     passengers: int = Field(default=1, ge=1, le=9)
 
     @field_validator("origin", "destination", mode="before")
@@ -125,10 +127,12 @@ class GetTripBookingLink(BaseModel):
 
 class GetTripSegment(BaseModel):
     flight_number: str | None = None
+    carrier: str | None = None
+    carrier_name: str | None = None
     origin_airport: str | None = None
     destination_airport: str | None = None
-    departs_at_local: str | None = None
-    arrives_at_local: str | None = None
+    departs_at_local: str | None = Field(default=None, description="Origin airport local time, without a timezone suffix")
+    arrives_at_local: str | None = Field(default=None, description="Destination airport local time, without a timezone suffix")
 
 
 class GetTripFlight(BaseModel):
@@ -142,14 +146,19 @@ class GetTripFlight(BaseModel):
         description="Taxes and fees in minor units of taxes_currency",
     )
     taxes_currency: str | None = None
+    cash_fees_usd: float | None = Field(
+        default=None, ge=0, allow_inf_nan=False,
+        description="Taxes and fees in USD; null when missing or explicitly non-USD",
+    )
     reported_seats: int | float | None = Field(
         ge=0, allow_inf_nan=False, description="Seats reported by the provider"
     )
-    departs_at_local: str
-    arrives_at_local: str
+    departs_at_local: str = Field(description="Origin airport local time, without a timezone suffix")
+    arrives_at_local: str = Field(description="Destination airport local time, without a timezone suffix")
     duration_minutes: int = Field(ge=0)
     stops: int = Field(ge=0)
     carriers: list[str]
+    carrier_names: list[str] = Field(default_factory=list)
     provider_updated_at: str | None = None
     flight_numbers: list[str]
     segments: list[GetTripSegment] = Field(default_factory=list)

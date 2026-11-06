@@ -35,6 +35,17 @@ def test_search_returns_results(client):
     assert response.get_json()["message"] is None
 
 
+@pytest.mark.parametrize("cabin_fields", [{}, {"cabin": None}])
+def test_search_without_cabin_returns_multiple_classes(client, cabin_fields):
+    request = {key: value for key, value in VALID_SEARCH.items() if key != "cabin"}
+    response = client.post("/api/search", json={**request, **cabin_fields})
+    assert response.status_code == 200
+    results = response.get_json()["results"]
+    assert {result["cabin"] for result in results} == {"economy", "business"}
+    assert len(results) == 5
+    assert all(result["seats_available"] is None or result["seats_available"] >= 2 for result in results)
+
+
 def test_search_explains_empty_results(client):
     response = client.post("/api/search", json={**VALID_SEARCH, "cabin": "first"})
     assert response.status_code == 200
@@ -113,8 +124,9 @@ def test_loads_one_provider_record_and_preserves_reported_data(client, provider)
     assert trip["availability_id"] == AVAILABILITY_ID
     assert trip["points"] == 15000
     assert trip["taxes_minor"] == 0
+    assert trip["cash_fees_usd"] == 0
     assert trip["reported_seats"] == 0
-    assert trip["departs_at_local"] == RAW_TRIP["DepartsAt"]
+    assert trip["departs_at_local"] == "2026-12-01T09:00:00"
     assert trip["duration_minutes"] == 370
     assert trip["carriers"] == ["UA"]
     assert trip["segments"][0]["departs_at_local"] is None
@@ -136,6 +148,66 @@ def test_missing_segments_and_currency_remain_unknown(client, provider):
     assert result["segments"] == []
     assert result["taxes_currency"] is None
     assert result["taxes_minor"] is None
+    assert result["cash_fees_usd"] is None
+
+
+def test_trip_carrier_names_use_provider_metadata_then_known_names(client, provider):
+    provider.return_value["carriers"] = {"AA": "American Airlines (provider)", "XY": "Example Air"}
+    trip = provider.return_value["data"][0]
+    trip["Carriers"] = "AA, AS, AA, XY, ZZ"
+    trip["AvailabilitySegments"] = [
+        {"Carrier": "AS", "FlightNumber": "AA123"},
+        {"Carrier": "XY", "CarrierName": "Example Regional", "FlightNumber": "AA456"},
+        {"FlightNumber": "AA789"},
+    ]
+    result = client.get(PATH).get_json()["trips"][0]
+    assert result["carrier_names"] == ["American Airlines (provider)", "Alaska Airlines", "Example Air", "ZZ"]
+    assert result["carriers"] == ["AA", "AS", "AA", "XY", "ZZ"]
+    first, second, unknown = result["segments"]
+    assert (first["carrier"], first["carrier_name"]) == ("AS", "Alaska Airlines")
+    assert (second["carrier"], second["carrier_name"]) == ("XY", "Example Regional")
+    assert (unknown["carrier"], unknown["carrier_name"]) == (None, None)
+
+
+def test_single_carrier_itinerary_names_each_segment_without_flight_numbers(client, provider):
+    trip = provider.return_value["data"][0]
+    trip["Carriers"] = "AA, AA"
+    trip["AvailabilitySegments"] = [{"OriginAirport": "JFK"}, {"OriginAirport": "CLT"}]
+    result = client.get(PATH).get_json()["trips"][0]
+    assert result["carrier_names"] == ["American Airlines"]
+    assert [segment["carrier_name"] for segment in result["segments"]] == ["American Airlines"] * 2
+
+
+@pytest.mark.parametrize(("currency", "taxes", "usd"), [
+    ("USD", 560, 5.6), ("", 560, 5.6), (None, "560", 5.6),
+    ("USD", 0, 0), ("USD", None, None), ("CAD", 560, None),
+])
+def test_trip_fees_are_normalized_to_usd_without_inventing_fx(client, provider, currency, taxes, usd):
+    trip = provider.return_value["data"][0]
+    trip.update(TaxesCurrency=currency, TotalTaxes=taxes)
+    result = client.get(PATH).get_json()["trips"][0]
+    assert result["cash_fees_usd"] == usd
+    assert result["taxes_currency"] == currency
+
+
+@pytest.mark.parametrize(("departure", "arrival"), [
+    ("2026-03-08T01:30:00Z", "2026-03-08T03:30:00Z"),
+    ("2026-11-01T01:30:00Z", "2026-11-02T02:10:00Z"),
+    ("2026-12-06T12:25:00", "2026-12-06T18:23:00"),
+])
+def test_flight_clocks_stay_airport_local_across_dst_and_dates(client, provider, departure, arrival):
+    updated = "2026-11-02T19:38:11.562677Z"
+    trip = provider.return_value["data"][0]
+    trip.update(DepartsAt=departure, ArrivesAt=arrival, UpdatedAt=updated)
+    trip["AvailabilitySegments"] = [{
+        "OriginAirport": "JFK", "DestinationAirport": "SEA",
+        "DepartsAt": departure, "ArrivesAt": arrival,
+    }]
+    result = client.get(PATH).get_json()["trips"][0]
+    for schedule in (result, result["segments"][0]):
+        assert schedule["departs_at_local"] == departure.removesuffix("Z")
+        assert schedule["arrives_at_local"] == arrival.removesuffix("Z")
+    assert result["provider_updated_at"] == updated
 
 
 @pytest.mark.parametrize("value", ["bad%3Fid", "bad%20id", "a" * 201])
