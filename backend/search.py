@@ -22,6 +22,12 @@ def get_availability_trips(availability_id: str) -> GetTripResponse:
         response = GetTripResponse.model_validate({**payload, "availability_id": availability_id})
         if any(trip.availability_id != availability_id for trip in response.trips):
             raise ValueError("Trip availability ID does not match the requested record")
+        for trip in response.trips:
+            # Blank trip currency follows the provider's USD default. Explicit
+            # foreign currencies require an exchange rate and stay unconverted.
+            currency = (trip.taxes_currency or "USD").strip().upper() or "USD"
+            if trip.taxes_minor is not None and currency == "USD":
+                trip.cash_fees_usd = trip.taxes_minor / 100
         return response
     except (ValidationError, TypeError, ValueError) as error:
         raise APIRouterError("Invalid trip details returned by the provider") from error
@@ -76,10 +82,12 @@ def search_awards(criteria: SearchCriteria) -> SearchResponse:
         logger.info("seats.aero returned more pages; only the first is used")
     rows = response.get("data") or []
     results = []
+    cabins = (criteria.cabin,) if criteria.cabin is not None else tuple(_CABIN_PREFIX)
     for row in rows:
-        result = _to_result(row, criteria)
-        if result is not None:
-            results.append(result)
+        for cabin in cabins:
+            result = _to_result(row, criteria, cabin)
+            if result is not None:
+                results.append(result)
     if results:
         return SearchResponse(results=sorted(results, key=lambda r: r.points_cost))
     return SearchResponse(results=[], message=_empty_message(rows, criteria))
@@ -88,15 +96,20 @@ def search_awards(criteria: SearchCriteria) -> SearchResponse:
 def _empty_message(rows: list[dict], criteria: SearchCriteria) -> str:
     """Say why nothing matched: too few seats, wrong cabin, or no availability at all."""
     trip = f"from {criteria.origin} to {criteria.destination} on {criteria.departure_date}"
-    cabin = criteria.cabin.replace("_", " ")
+    cabin_name = criteria.cabin.replace("_", " ") if criteria.cabin is not None else None
+    cabins = (criteria.cabin,) if criteria.cabin is not None else tuple(_CABIN_PREFIX)
     one_seat = criteria.model_copy(update={"passengers": 1})
-    if any(_to_result(row, one_seat) for row in rows):
+    if any(_to_result(row, one_seat, cabin) for row in rows for cabin in cabins):
+        seat_label = f"{cabin_name.capitalize()} award seats" if cabin_name else "Award seats"
         return (
-            f"{cabin.capitalize()} award seats exist {trip}, but no program reports "
+            f"{seat_label} exist {trip}, but no program reports "
             f"{criteria.passengers} seats available."
         )
-    if any(row.get(f"{prefix}Available") for row in rows for prefix in _CABIN_PREFIX.values()):
-        return f"No {cabin} award seats {trip}. Other cabins have availability."
+    if cabin_name and any(
+        _to_result(row, one_seat, cabin)
+        for row in rows for cabin in _CABIN_PREFIX if cabin != criteria.cabin
+    ):
+        return f"No {cabin_name} award seats {trip}. Other cabins have availability."
     return f"No award availability found {trip}."
 
 
@@ -115,9 +128,9 @@ def _fetch_availability(criteria: SearchCriteria) -> dict:
     )
 
 
-def _to_result(row: dict, criteria: SearchCriteria) -> Result | None:
-    """Map one seats.aero availability row to a Result, or None if it doesn't match."""
-    prefix = _CABIN_PREFIX[criteria.cabin]
+def _to_result(row: dict, criteria: SearchCriteria, cabin: Cabin) -> Result | None:
+    """Map one cabin of a seats.aero availability row, or None if it doesn't match."""
+    prefix = _CABIN_PREFIX[cabin]
     if not row.get(f"{prefix}Available"):
         return None
     try:
@@ -140,7 +153,7 @@ def _to_result(row: dict, criteria: SearchCriteria) -> Result | None:
         origin=route.get("OriginAirport") or criteria.origin,
         destination=route.get("DestinationAirport") or criteria.destination,
         departure_date=row.get("Date") or criteria.departure_date,
-        cabin=criteria.cabin,
+        cabin=cabin,
         points_cost=points_cost,
         cash_fees_usd=_fees_usd(row, prefix),
         seats_available=seats,

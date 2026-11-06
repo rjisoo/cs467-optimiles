@@ -3,6 +3,7 @@
 from datetime import date
 from types import SimpleNamespace
 
+import pytest
 from google.genai import errors, types
 
 from backend.llm import gemini_chat
@@ -23,6 +24,7 @@ SEARCH_ARGS = {
     "destination": "HND",
     "departure_date": "2026-12-01",
     "cabin": "business",
+    "cabin_quote": "Business class",
     "origin_quote": "Chicago",
     "destination_quote": "Tokyo",
     "date_quote": "Dec 1",
@@ -82,6 +84,32 @@ def test_run_search_tool_reports_invalid_args():
     assert payload["error"] == "Invalid search criteria"
     assert payload["details"]
     assert results == []
+
+
+@pytest.mark.parametrize(("message", "cabin", "quote", "expected"), [
+    ("sea to jfk dec 6", None, None, {"economy", "premium_economy", "business", "first"}),
+    ("sea to jfk dec 6 business", "business", "business", {"business"}),
+    ("first class sea to jfk dec 6", "first", "first class", {"first"}),
+    ("sea to jfk dec 6 premium economy", "premium_economy", "premium economy", {"premium_economy"}),
+    ("economy sea to jfk dec 6", "economy", "economy", {"economy"}),
+    ("sea to jfk dec 6", "economy", None, {"economy", "premium_economy", "business", "first"}),
+    ("sea to jfk dec 6", "economy", "economy", {"economy", "premium_economy", "business", "first"}),
+])
+def test_chat_only_filters_explicit_cabins(monkeypatch, seats_aero_row, message, cabin, quote, expected):
+    row = seats_aero_row("alaska", origin="SEA", destination="JFK", day="2026-12-06")
+    for prefix, points in zip("YWJF", (12500, 20000, 30000, 50000)):
+        row.update({f"{prefix}Available": True, f"{prefix}MileageCost": str(points)})
+    monkeypatch.setattr("backend.search._fetch_availability", lambda criteria: {"data": [row]})
+    args = {"origin": "SEA", "destination": "JFK", "departure_date": "2026-12-06",
+            "origin_quote": "sea", "destination_quote": "jfk", "date_quote": "dec 6"}
+    if cabin is not None:
+        args["cabin"] = cabin
+    if quote is not None:
+        args["cabin_quote"] = quote
+    client = FakeClient(tool_response(args), text_response("Available awards."))
+    response = chat(client, message)
+    assert {result.cabin for result in response.results} == expected
+    assert sent_function_response(client, 1)["count"] == len(expected)
 
 
 def test_run_search_tool_reports_no_results():
