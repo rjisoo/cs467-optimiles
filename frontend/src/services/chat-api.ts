@@ -1,3 +1,5 @@
+import { validateChatResponse, type ChatResponse } from './chat-response'
+
 function failureMessage(status: number | null): string {
   if (status === null) {
     return 'Could not reach the chat service. Check your connection and try again.'
@@ -24,7 +26,7 @@ export class ChatRequestError extends Error {
   }
 }
 
-export async function sendChatMessage(message: string, signal: AbortSignal): Promise<void> {
+export async function sendChatMessage(message: string, signal: AbortSignal): Promise<ChatResponse> {
   let response: Response
   try {
     response = await fetch('/api/chat', {
@@ -42,5 +44,11 @@ export async function sendChatMessage(message: string, signal: AbortSignal): Pro
 
   if (!response.ok) {
     throw new ChatRequestError(response.status)
+  }
+  try {
+    return validateChatResponse(await response.json())
+  } catch (error) {
+    if (signal.aborted) throw error
+    throw new Error('The chat service returned an invalid response. Please try again.', { cause: error })
   }
 }

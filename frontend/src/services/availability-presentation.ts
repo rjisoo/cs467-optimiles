@@ -1,49 +1,38 @@
-import type { AvailabilitySummary, Cabin } from './availability-api'
-import { programName } from './availability-prototype'
+import type { ChatCabin, ChatResult } from './chat-response'
+
+export const cabinOptions: { key: ChatCabin; label: string }[] = [
+  { key: 'economy', label: 'Economy' },
+  { key: 'premium_economy', label: 'Premium economy' },
+  { key: 'business', label: 'Business' },
+  { key: 'first', label: 'First' },
+]
 
 export type SummarySort = {
   field: 'date' | 'program' | 'points'
-  cabin?: Cabin
+  cabin?: ChatCabin
   direction: 'asc' | 'desc'
 }
 
-function sortValue(row: AvailabilitySummary, sort: SummarySort): string | number | null {
-  if (sort.field === 'date') {
-    return row.date
-  }
-  if (sort.field === 'program') {
-    return row.source === null ? null : programName(row.source)
-  }
-  const cabin = row.cabins.find((item) => item.cabin === sort.cabin)
-  if (cabin?.available !== true || cabin.from_points === 0) {
-    return null
-  }
-  return cabin.from_points
+function sortValue(row: ChatResult, sort: SummarySort): string | number | null {
+  if (sort.field === 'date') return row.departure_date
+  if (sort.field === 'program') return row.program
+  return row.cabin === sort.cabin ? row.points_cost : null
 }
 
-export function sortSummaries(rows: AvailabilitySummary[], sort: SummarySort) {
+export function sortSummaries(rows: ChatResult[], sort: SummarySort) {
   return [...rows].sort((first, second) => {
     const firstValue = sortValue(first, sort)
     const secondValue = sortValue(second, sort)
-    if (firstValue === null && secondValue !== null) {
-      return 1
-    }
-    if (secondValue === null && firstValue !== null) {
-      return -1
-    }
-
+    if (firstValue === null && secondValue !== null) return 1
+    if (secondValue === null && firstValue !== null) return -1
     let difference = 0
     if (firstValue !== null && secondValue !== null) {
-      if (typeof firstValue === 'string' && typeof secondValue === 'string') {
-        difference = firstValue.localeCompare(secondValue)
-      } else {
-        difference = Number(firstValue) - Number(secondValue)
-      }
+      difference = typeof firstValue === 'string' && typeof secondValue === 'string'
+        ? firstValue.localeCompare(secondValue)
+        : Number(firstValue) - Number(secondValue)
     }
-    const direction = sort.direction === 'asc' ? 1 : -1
-    return difference * direction
-      || first.date.localeCompare(second.date)
-      || first.availability_id.localeCompare(second.availability_id)
+    return difference * (sort.direction === 'asc' ? 1 : -1)
+      || first.departure_date.localeCompare(second.departure_date)
   })
 }
 

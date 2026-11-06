@@ -1,94 +1,56 @@
 import Icon from './Icon'
 import { Button } from './ui/button'
 import { awardDateLabel } from '../lib/trip-date'
-import type { TripCriteria } from '../services/mock-search'
-import type { RequiredCriteria } from '../services/availability-api'
+import type { ChatResult } from '../services/chat-response'
+import { cabinOptions } from '../services/availability-presentation'
 
 const airportNames: Record<string, string> = { JFK: 'New York', SEA: 'Seattle' }
 
-function airportLabel(codes: string | null) {
-  if (codes === null) {
-    return 'Airport unknown'
-  }
-  return codes
-    .split(',')
-    .map((value) => {
-      const code = value.trim()
-      return airportNames[code] ? `${airportNames[code]} · ${code}` : code
-    })
-    .join(' / ')
+function airportLabel(code: string) {
+  return airportNames[code] ? `${airportNames[code]} · ${code}` : code
 }
 
-type Props = {
-  criteria: TripCriteria
-  resolvedCriteria?: RequiredCriteria
-  comparisonCabins?: string[]
-}
+export default function CurrentTrip({ results }: { results: ChatResult[] }) {
+  if (results.length === 0) return null
 
-export default function CurrentTrip({
-  criteria,
-  resolvedCriteria,
-  comparisonCabins = criteria.cabins,
-}: Props) {
-  const resolved = resolvedCriteria ?? {
-    origin_airport: criteria.origin,
-    destination_airport: criteria.destination,
-    start_date: criteria.departureDate,
-    end_date: criteria.endDate ?? criteria.departureDate,
-  }
-  const range = resolved.end_date !== resolved.start_date
-  const datesKnown = resolved.start_date !== null && resolved.end_date !== null
-  let dateMode = 'Dates incomplete'
-  if (datesKnown) {
-    dateMode = range ? 'Date range' : 'Exact dates'
-  }
-  const cabinLabel = comparisonCabins.length === 4
-    ? 'all cabins'
-    : comparisonCabins.join(' + ') || 'no cabins selected'
+  const first = results[0]
+  const sameRoute = results.every((row) => row.origin === first.origin && row.destination === first.destination)
+  const dates = results.map((row) => row.departure_date).sort()
+  const startDate = dates[0]
+  const endDate = dates[dates.length - 1]
+  const cabins = cabinOptions.filter((option) => results.some((row) => row.cabin === option.key))
 
   return (
     <section className="current-trip panel toolbar" aria-label="Current trip">
       <div>
+        <p className="availability-list-note">Returned route and dates</p>
         <p className="current-trip-route">
-          <span>{airportLabel(resolved.origin_airport)}</span>
-          <Icon name="arrowRight" />
-          <span>{airportLabel(resolved.destination_airport)}</span>
+          {sameRoute ? <>
+            <span>{airportLabel(first.origin)}</span>
+            <Icon name="arrowRight" />
+            <span>{airportLabel(first.destination)}</span>
+          </> : <span>Multiple returned routes</span>}
         </p>
         <p className="current-trip-criteria">
-          <span>One way</span>
-          <span>{criteria.adults} {criteria.adults === '1' ? 'adult' : 'adults'} · local preference</span>
-          <span>All cabins · Compare {cabinLabel}</span>
+          <span>{cabins.map((cabin) => cabin.label).join(' + ')}</span>
           <span>
-            {resolved.start_date ? (
-              <time dateTime={resolved.start_date}>{awardDateLabel(resolved.start_date)}</time>
-            ) : (
-              'Start date unknown'
-            )}
-            {(range || !datesKnown) && (
-              <>
-                {' '}–{' '}
-                {resolved.end_date ? (
-                  <time dateTime={resolved.end_date}>{awardDateLabel(resolved.end_date)}</time>
-                ) : (
-                  'End date unknown'
-                )}
-              </>
-            )}
+            <time dateTime={startDate}>{awardDateLabel(startDate)}</time>
+            {startDate !== endDate && <>
+              {' '}–{' '}
+              <time dateTime={endDate}>{awardDateLabel(endDate)}</time>
+            </>}
           </span>
-          <span>{dateMode}</span>
-          <span>Any program</span>
-          <span>No points limit</span>
+          <span>Passenger count not supplied in results</span>
         </p>
       </div>
       <Button
         variant="outline"
         disabled
-        aria-label="Edit trip, preview only"
-        title="Preview only — current-trip editing comes later"
+        aria-label="Edit trip"
+        title="Send a new message to change your search"
       >
         <Icon name="pencil" />
         Edit trip
-        <span className="current-trip-edit-note"> · Preview only</span>
       </Button>
     </section>
   )

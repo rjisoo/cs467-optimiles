@@ -80,7 +80,7 @@ function AppNavigation({ isMenuOpen, onMenuOpenChange, onNewTrip }: AppNavigatio
               <Icon name="settings" /><span>Settings <small>Not available yet</small></span>
             </Button>
           </nav>
-          <p className="sidebar-note">Award travel,<br />made clearer.<span>Explore the OptiMiles preview.</span></p>
+          <p className="sidebar-note">Award travel,<br />made clearer.</p>
         </aside>
       </CollapsibleContent>
     </Collapsible>
