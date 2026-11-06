@@ -5,10 +5,26 @@ search_awards() is the single entry point for both /api/search and the chat tool
 import logging
 import os
 
+from pydantic import ValidationError
+
 from backend.ext_api import APIRouterError, seatsaero_api
-from backend.models import Cabin, Result, SearchCriteria, SearchResponse
+from backend.models import Cabin, GetTripResponse, Result, SearchCriteria, SearchResponse
 
 logger = logging.getLogger(__name__)
+
+
+def get_availability_trips(availability_id: str) -> GetTripResponse:
+    """Load and validate trip details for one provider availability record."""
+    if not os.getenv("SEATSAERO_TOKEN"):
+        raise APIRouterError("SEATSAERO_TOKEN is not set in backend/.env")
+    payload = seatsaero_api.get_trip_to_client_json(availability_id, {})
+    try:
+        response = GetTripResponse.model_validate({**payload, "availability_id": availability_id})
+        if any(trip.availability_id != availability_id for trip in response.trips):
+            raise ValueError("Trip availability ID does not match the requested record")
+        return response
+    except (ValidationError, TypeError, ValueError) as error:
+        raise APIRouterError("Invalid trip details returned by the provider") from error
 
 
 def cents_per_point(
@@ -118,6 +134,7 @@ def _to_result(row: dict, criteria: SearchCriteria) -> Result | None:
     route = row.get("Route") or {}
     source = row.get("Source") or route.get("Source") or ""
     return Result(
+        availability_id=row.get("ID") if isinstance(row.get("ID"), str) else None,
         program=_PROGRAM_NAMES.get(source, source),
         airline=row.get(f"{prefix}Airlines") or "Not reported",
         origin=route.get("OriginAirport") or criteria.origin,

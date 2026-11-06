@@ -1,10 +1,12 @@
-import { useRef, useState, type ReactNode } from 'react'
-import type { ChatCabin, ChatResponse } from '../services/chat-response'
+import { Fragment, useId, useRef, useState, type ReactNode } from 'react'
+import type { ChatCabin, ChatResponse, ChatResult } from '../services/chat-response'
 import { cabinOptions, sortSummaries, type SummarySort } from '../services/availability-presentation'
 import { awardDateLabel } from '../lib/trip-date'
 import AvailabilitySummaryRow from './AvailabilitySummaryRow'
 import AvailabilityPagination from './AvailabilityPagination'
 import AvailabilityFilter from './AvailabilityFilter'
+import TripDetails from './TripDetails'
+import useTripDetails from '../useTripDetails'
 
 type Props = {
   searchId: string | number
@@ -18,6 +20,9 @@ export default function AvailabilityResults(props: Props) {
 }
 
 function SearchResults({ response, message }: Props) {
+  const { states, load } = useTripDetails()
+  const [open, setOpen] = useState<ChatResult | null>(null)
+  const detailsId = useId()
   const summaries = response.results
   const availableDates = [...new Set(summaries.map((row) => row.departure_date))].sort()
   const availablePrograms = [...new Set(summaries.map((row) => row.program))]
@@ -37,6 +42,7 @@ function SearchResults({ response, message }: Props) {
     const reverse = sort.field === field && sort.cabin === cabin && sort.direction === 'asc'
     setSort({ field, cabin, direction: reverse ? 'desc' : 'asc' })
     setPage(1)
+    setOpen(null)
   }
 
   function sortState(field: SummarySort['field'], cabin?: ChatCabin) {
@@ -73,13 +79,14 @@ function SearchResults({ response, message }: Props) {
                   onChange={(values) => {
                     setCabins(values as ChatCabin[])
                     setPage(1)
+                    setOpen(null)
                   }} />
                 <AvailabilityFilter label="Dates" allLabel="All dates" values={dates}
                   options={availableDates.map((date) => ({ value: date, label: awardDateLabel(date) }))}
-                  onChange={(values) => { setDates(values); setPage(1) }} />
+                  onChange={(values) => { setDates(values); setPage(1); setOpen(null) }} />
                 <AvailabilityFilter label="Programs" allLabel="All programs" values={programs}
                   options={availablePrograms.map((program) => ({ value: program, label: program }))}
-                  onChange={(values) => { setPrograms(values); setPage(1) }} />
+                  onChange={(values) => { setPrograms(values); setPage(1); setOpen(null) }} />
               </div>
             </div>
           </div>
@@ -102,23 +109,45 @@ function SearchResults({ response, message }: Props) {
                 </button>
               </th>)}
             </tr></thead>
-            <tbody>{rows.slice((page - 1) * pageSize, page * pageSize).map((summary, index) =>
-              <AvailabilitySummaryRow key={index} summary={summary} comparisonCabins={cabins} />)}
-            </tbody>
+            <tbody>{rows.slice((page - 1) * pageSize, page * pageSize).map((summary, index) => {
+              const id = summary.availability_id
+              const state = id ? states[id] : undefined
+              const expanded = open === summary
+              const panelId = `${detailsId}-${index}`
+              return <Fragment key={index}>
+                <AvailabilitySummaryRow summary={summary} comparisonCabins={cabins} open={expanded}
+                  detailsId={panelId} onToggle={() => {
+                    setOpen(expanded ? null : summary)
+                    if (!expanded && id) void load(id)
+                  }} />
+                {expanded && id && <tr className="availability-detail-row"><td colSpan={6}>
+                  <section id={panelId} className="availability-expanded" aria-label={`Trips for ${summary.program}`}>
+                    {(!state || state.status === 'pending') && <p role="status">Loading trip details…</p>}
+                    {state?.status === 'failed' && <div role="alert">
+                      <p>{state.error}</p>
+                      <button className="compact-button compact-button--outline" onClick={() => void load(id)}>Retry trip details</button>
+                    </div>}
+                    {state?.status === 'success' && <TripDetails key={`${id}-${summary.cabin}`}
+                      response={state.response} cabin={summary.cabin} route={`${summary.origin} → ${summary.destination}`} />}
+                  </section>
+                </td></tr>}
+              </Fragment>
+            })}</tbody>
           </table>
           {rows.length === 0 && <p className="availability-empty" role="status">No results match these filters.</p>}
           <AvailabilityPagination label="Daily options pagination" unit="award options" page={page}
             pageSize={pageSize} total={rows.length}
             onPageChange={(next, scroll) => {
               setPage(next)
+              setOpen(null)
               if (scroll) tableHeading.current?.scrollIntoView?.({ block: 'start' })
             }}
-            onPageSizeChange={(size) => { setPageSize(size); setPage(1) }} />
+            onPageSizeChange={(size) => { setPageSize(size); setPage(1); setOpen(null) }} />
         </section>
         <details className="availability-provenance">
           <summary>Available details & limitations</summary>
           <p>Each row shows one returned award option. Cash fees are in USD; CPP is shown only when reported.</p>
-          <p>Reported seat counts do not confirm availability for your whole party. Flight schedules and trip details are not available here yet.</p>
+          <p>Reported seat counts do not confirm availability for your whole party. Expand an identified result to load its reported trips. Missing schedules stay unreported.</p>
         </details>
       </>}
     </section>

@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from backend.models import ChatRequest, ChatResponse, SearchCriteria, SearchResponse
@@ -28,7 +30,7 @@ def test_openapi_covers_all_api_routes_and_resolves_references(client):
     assert spec["openapi"] == "3.1.0"
     assert spec["servers"] == [{"url": "/"}]
     actual_routes = {
-        (rule.rule, method.lower())
+        (re.sub(r"<(?:[^:<>]+:)?([^<>]+)>", r"{\1}", rule.rule), method.lower())
         for rule in client.application.url_map.iter_rules()
         if rule.rule.startswith("/api/")
         for method in rule.methods - {"HEAD", "OPTIONS"}

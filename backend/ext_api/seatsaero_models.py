@@ -257,7 +257,7 @@ class RawGetTripFlights(SeatsAeroModel):
     carriers: list[str]
     provider_updated_at: str | None = None
     flight_numbers: list[str]
-    segments: list[RawGetTripSegment]
+    segments: list[RawGetTripSegment] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod
@@ -301,7 +301,7 @@ class RawGetTripFlights(SeatsAeroModel):
 class RawGetTripResponse(SeatsAeroModel):
     """Represents the raw get trip response from the SeatsAero API."""
 
-    trips: list[RawGetTripFlights] = Field(default_factory=list, alias="data")
+    trips: list[RawGetTripFlights] = Field(alias="data")
     booking_links: list[RawGetTripBookingLink] = Field(default_factory=list)
 
     def to_client_json(self) -> dict[str, Any]:

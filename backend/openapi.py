@@ -121,7 +121,7 @@ def build_openapi(server_url: str = "/") -> dict:
         "info": {
             "title": "OptiMiles API",
             "version": "0.1.0",
-            "description": "Award flight search and chat. Award results currently use fake data.",
+            "description": "Award flight search, chat and trip details using seats.aero cached provider data.",
         },
         # Relative to the current origin, so Try it out works on custom ports too.
         "servers": [{"url": server_url}],
@@ -178,6 +178,32 @@ def build_openapi(server_url: str = "/") -> dict:
                         "history": [],
                     },
                 )
+            },
+            "/api/availability/{availability_id}/trips": {
+                "get": {
+                    "summary": "Load trip details for an availability record",
+                    "description": "Uses the provider availability_id returned by search/chat. "
+                    "Returns all reported cabins; an empty trips array is a successful response. "
+                    "Fees retain their currency and minor units; timestamps retain provider text.",
+                    "parameters": [{
+                        "name": "availability_id", "in": "path", "required": True,
+                        "schema": {
+                            "type": "string", "pattern": "^[A-Za-z0-9_-]+$",
+                            "minLength": 1, "maxLength": 200,
+                        },
+                    }],
+                    "responses": {
+                        "200": {
+                            "description": "Reported trip details",
+                            "content": {"application/json": {
+                                "schema": refs[GetTripResponse, "serialization"],
+                            }},
+                        },
+                        "400": _error_response("Invalid availability ID", "Bad request"),
+                        **_UPSTREAM_RESPONSES,
+                        "500": _error_response("Unexpected server error", "Internal server error"),
+                    },
+                },
             },
         },
         "components": {"schemas": schemas},

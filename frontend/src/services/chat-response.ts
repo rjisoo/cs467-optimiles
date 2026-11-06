@@ -3,6 +3,7 @@ import { isExactDate } from '../lib/trip-date'
 export type ChatCabin = 'economy' | 'premium_economy' | 'business' | 'first'
 
 export type ChatResult = {
+  availability_id?: string | null
   airline: string
   cabin: ChatCabin
   cash_fees_usd: number | null
@@ -62,7 +63,10 @@ export function validateChatResponse(input: unknown): ChatResponse {
     const destination = text(row.destination, `${path}.destination`)
     if (!/^[A-Z]{3}$/.test(origin)) invalid(`${path}.origin`)
     if (!/^[A-Z]{3}$/.test(destination)) invalid(`${path}.destination`)
+    if (row.availability_id != null && (typeof row.availability_id !== 'string'
+      || !/^[A-Za-z0-9_-]{1,200}$/.test(row.availability_id))) invalid(`${path}.availability_id`)
     return {
+      ...(row.availability_id === undefined ? {} : { availability_id: row.availability_id as string | null }),
       airline: text(row.airline, `${path}.airline`), cabin: cabin as ChatCabin,
       cash_fees_usd: nullableNumber(row.cash_fees_usd, `${path}.cash_fees_usd`),
       cents_per_point: nullableCpp(row.cents_per_point, `${path}.cents_per_point`),

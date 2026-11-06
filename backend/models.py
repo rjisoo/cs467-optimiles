@@ -34,6 +34,9 @@ class SearchCriteria(BaseModel):
 
 
 class Result(BaseModel):
+    availability_id: str | None = Field(
+        default=None, description="Provider availability ID for loading trip details"
+    )
     program: str = Field(description="Loyalty program the points come from")
     airline: str = Field(description="Operating airline")
     origin: str
@@ -133,26 +136,28 @@ class GetTripFlight(BaseModel):
     availability_id: str
     source: str
     cabin: str
-    points: int | float | None = Field(description="Points cost")
+    points: int | float | None = Field(ge=0, allow_inf_nan=False, description="Points cost")
     taxes_minor: int | float | None = Field(
-        default=None, description="Taxes and fees in minor units of taxes_currency"
+        default=None, ge=0, allow_inf_nan=False,
+        description="Taxes and fees in minor units of taxes_currency",
     )
     taxes_currency: str | None = None
     reported_seats: int | float | None = Field(
-        description="Seats reported by the provider"
+        ge=0, allow_inf_nan=False, description="Seats reported by the provider"
     )
     departs_at_local: str
     arrives_at_local: str
-    duration_minutes: int
-    stops: int
+    duration_minutes: int = Field(ge=0)
+    stops: int = Field(ge=0)
     carriers: list[str]
     provider_updated_at: str | None = None
     flight_numbers: list[str]
-    segments: list[GetTripSegment]
+    segments: list[GetTripSegment] = Field(default_factory=list)
 
 
 # Seats.Aero Get Trips Response Models
 class GetTripResponse(BaseModel):
+    availability_id: str
     booking_links: list[GetTripBookingLink]
     trips: list[GetTripFlight]
 
