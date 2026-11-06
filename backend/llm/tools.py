@@ -45,7 +45,16 @@ SEARCH_AWARDS_DECLARATION = {
             "destination": {"type": "string", "description": "3-letter IATA airport code, e.g. HND"},
             "departure_date": {"type": "string", "description": "Departure date, YYYY-MM-DD"},
             "return_date": {"type": "string", "description": "Optional return date, YYYY-MM-DD"},
-            "cabin": {"type": "string", "enum": list(get_args(Cabin))},
+            "cabin": {
+                "type": "string", "enum": list(get_args(Cabin)),
+                "description": "Only set when the user explicitly requests a cabin. Omit to search all cabins.",
+            },
+            "cabin_quote": {
+                "type": "string",
+                "description": _QUOTE_DESCRIPTION.format(
+                    detail="requested cabin", example='"business" or "first class"'
+                ),
+            },
             "passengers": {"type": "integer", "minimum": 1, "maximum": 9},
             "origin_quote": {
                 "type": "string",
@@ -106,7 +115,10 @@ def run_search_tool(args: dict, user_text: str) -> tuple[dict, list[Result]]:
             ),
         }, []
 
-    search_args = {key: value for key, value in args.items() if key not in QUOTE_ARGS}
+    search_args = {key: value for key, value in args.items() if key not in QUOTE_ARGS and key != "cabin_quote"}
+    cabin_quote = _normalize(str(args.get("cabin_quote") or "")).strip(_QUOTE_STRIP)
+    if not cabin_quote or cabin_quote not in _normalize(user_text):
+        search_args["cabin"] = None
     try:
         criteria = SearchCriteria.model_validate(search_args)
     except ValidationError as error:
