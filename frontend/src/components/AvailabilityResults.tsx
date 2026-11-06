@@ -1,6 +1,6 @@
 import { Fragment, useId, useRef, useState, type ReactNode } from 'react'
-import type { ChatCabin, ChatResponse, ChatResult } from '../services/chat-response'
-import { cabinOptions, sortSummaries, type SummarySort } from '../services/availability-presentation'
+import type { ChatCabin, ChatResponse } from '../services/chat-response'
+import { cabinOptions, groupSummaries, sortSummaries, type SummarySort } from '../services/availability-presentation'
 import { awardDateLabel } from '../lib/trip-date'
 import AvailabilitySummaryRow from './AvailabilitySummaryRow'
 import AvailabilityPagination from './AvailabilityPagination'
@@ -21,12 +21,12 @@ export default function AvailabilityResults(props: Props) {
 
 function SearchResults({ response, message }: Props) {
   const { states, load } = useTripDetails()
-  const [open, setOpen] = useState<ChatResult | null>(null)
+  const [open, setOpen] = useState<{ key: string; cabin: ChatCabin; selection: number } | null>(null)
   const detailsId = useId()
-  const summaries = response.results
+  const summaries = groupSummaries(response.results)
   const availableDates = [...new Set(summaries.map((row) => row.departure_date))].sort()
   const availablePrograms = [...new Set(summaries.map((row) => row.program))]
-  const initialCabins = cabinOptions.filter((option) => summaries.some((row) => row.cabin === option.key))
+  const initialCabins = cabinOptions.filter((option) => summaries.some((row) => row.cabins[option.key]))
     .map((option) => option.key)
   const [cabins, setCabins] = useState<ChatCabin[]>(initialCabins)
   const [dates, setDates] = useState(availableDates)
@@ -35,7 +35,7 @@ function SearchResults({ response, message }: Props) {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(5)
   const tableHeading = useRef<HTMLHeadingElement>(null)
-  const rows = sortSummaries(summaries.filter((row) => cabins.includes(row.cabin)
+  const rows = sortSummaries(summaries.filter((row) => cabins.some((cabin) => row.cabins[cabin])
     && dates.includes(row.departure_date) && programs.includes(row.program)), sort)
 
   function changeSort(field: SummarySort['field'], cabin?: ChatCabin) {
@@ -56,7 +56,7 @@ function SearchResults({ response, message }: Props) {
   }
 
   const answer = <p className="availability-answer">
-    {summaries.length ? `${summaries.length} award ${summaries.length === 1 ? 'option' : 'options'} returned.`
+    {response.results.length ? `${response.results.length} award ${response.results.length === 1 ? 'option' : 'options'} returned.`
       : 'No award options were returned.'}
   </p>
 
@@ -110,32 +110,50 @@ function SearchResults({ response, message }: Props) {
               </th>)}
             </tr></thead>
             <tbody>{rows.slice((page - 1) * pageSize, page * pageSize).map((summary, index) => {
-              const id = summary.availability_id
-              const state = id ? states[id] : undefined
-              const expanded = open === summary
+              const ids = summary.availabilityIds
+              const pending = ids.some((id) => !states[id] || states[id].status === 'pending')
+              const failedIds = ids.filter((id) => states[id]?.status === 'failed')
+              const loaded = ids.flatMap((id) => {
+                const state = states[id]
+                return state?.status === 'success' ? [state.response] : []
+              })
+              const cabin = sort.cabin && cabins.includes(sort.cabin) && summary.cabins[sort.cabin]
+                ? sort.cabin : cabins.find((cabin) => summary.cabins[cabin])!
+              const expanded = open?.key === summary.key
               const panelId = `${detailsId}-${index}`
-              return <Fragment key={index}>
+              return <Fragment key={summary.key}>
                 <AvailabilitySummaryRow summary={summary} comparisonCabins={cabins} open={expanded}
                   detailsId={panelId} onToggle={() => {
-                    setOpen(expanded ? null : summary)
-                    if (!expanded && id) void load(id)
+                    setOpen(expanded ? null : { key: summary.key, cabin, selection: 0 })
+                    if (!expanded) ids.forEach((id) => void load(id))
+                  }} onSelectCabin={(cabin) => {
+                    setOpen((previous) => ({ key: summary.key, cabin, selection: (previous?.selection ?? 0) + 1 }))
+                    ids.forEach((id) => void load(id))
                   }} />
-                {expanded && id && <tr className="availability-detail-row"><td colSpan={6}>
+                {expanded && ids.length > 0 && <tr className="availability-detail-row"><td colSpan={6}>
                   <section id={panelId} className="availability-expanded" aria-label={`Trips for ${summary.program}`}>
-                    {(!state || state.status === 'pending') && <p role="status">Loading trip details…</p>}
-                    {state?.status === 'failed' && <div role="alert">
-                      <p>{state.error}</p>
-                      <button className="compact-button compact-button--outline" onClick={() => void load(id)}>Retry trip details</button>
+                    {pending && <p role="status">Loading trip details…</p>}
+                    {failedIds.length > 0 && <div role="alert">
+                      {[...new Set(failedIds.map((id) => {
+                        const state = states[id]
+                        return state.status === 'failed' ? state.error : ''
+                      }))].map((error) => <p key={error}>{error}</p>)}
+                      <button className="compact-button compact-button--outline"
+                        onClick={() => failedIds.forEach((id) => void load(id))}>Retry trip details</button>
                     </div>}
-                    {state?.status === 'success' && <TripDetails key={`${id}-${summary.cabin}`}
-                      response={state.response} cabin={summary.cabin} route={`${summary.origin} → ${summary.destination}`} />}
+                    {!pending && failedIds.length === 0 && <TripDetails key={open?.selection} cabin={open?.cabin ?? cabin}
+                      response={{
+                        trips: loaded.flatMap((detail) => detail.trips),
+                        booking_links: [...new Map(loaded.flatMap((detail) => detail.booking_links)
+                          .map((link) => [link.url, link])).values()],
+                      }} route={`${summary.origin} → ${summary.destination}`} />}
                   </section>
                 </td></tr>}
               </Fragment>
             })}</tbody>
           </table>
           {rows.length === 0 && <p className="availability-empty" role="status">No results match these filters.</p>}
-          <AvailabilityPagination label="Daily options pagination" unit="award options" page={page}
+          <AvailabilityPagination label="Daily options pagination" unit="rows" page={page}
             pageSize={pageSize} total={rows.length}
             onPageChange={(next, scroll) => {
               setPage(next)
@@ -146,7 +164,7 @@ function SearchResults({ response, message }: Props) {
         </section>
         <details className="availability-provenance">
           <summary>Available details & limitations</summary>
-          <p>Each row shows one returned award option. Cash fees are in USD; CPP is shown only when reported.</p>
+          <p>Each row combines cabins for one date, route and mileage program, showing the lowest reported points per cabin. Cash fees are in USD; CPP is shown only when reported.</p>
           <p>Reported seat counts do not confirm availability for your whole party. Expand an identified result to load its reported trips. Missing schedules stay unreported.</p>
         </details>
       </>}

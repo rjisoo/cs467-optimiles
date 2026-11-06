@@ -3,25 +3,44 @@ import { Tabs } from 'radix-ui'
 import type { ChatCabin } from '../services/chat-response'
 import type { FlightTrip, TripDetailsResponse } from '../services/trip-details'
 import { cabinOptions } from '../services/availability-presentation'
+import { arrivalDayOffset, formatUpdatedAt } from '../lib/trip-date'
 import AvailabilityPagination from './AvailabilityPagination'
 import Icon from './Icon'
+import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from './ui/dialog'
 
 function ReportedTime({ value, compact = false }: { value: string | null; compact?: boolean }) {
   if (!value) return <>Not reported</>
-  const match = value.match(/^\d{4}-\d{2}-\d{2}T(\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:\d{2})?$/)
-  const label = compact && match ? `${match[1]}${match[2] ?? ''}` : value.replace('T', ' ')
-  return <time dateTime={value} title={value}>{label}</time>
+  const match = value.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?$/)
+  const label = match ? `${compact ? '' : `${match[1]} `}${match[2]}` : value.replace('T', ' ')
+  return <time dateTime={value}>{label}</time>
 }
 
+const dollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
+
 function fees(trip: FlightTrip) {
-  if (trip.taxes_minor === null) return 'Cash fees not reported'
-  const currency = trip.taxes_currency?.toUpperCase()
-  if (currency && Intl.supportedValuesOf('currency').includes(currency)) {
-    const format = new Intl.NumberFormat('en-US', { style: 'currency', currency })
-    const digits = format.resolvedOptions().maximumFractionDigits ?? 2
-    return `${format.format(trip.taxes_minor / 10 ** digits)} ${trip.taxes_currency} fees`
-  }
-  return `${trip.taxes_minor.toLocaleString('en-US')} fee minor units · ${trip.taxes_currency ?? 'currency not reported'}`
+  return trip.cash_fees_usd == null ? 'USD fees unavailable' : `${dollars.format(trip.cash_fees_usd)} USD fees`
+}
+
+function BookingOptions({ links }: { links: TripDetailsResponse['booking_links'] }) {
+  const options = links.flatMap((link) => {
+    const url = bookingUrl(link.url)
+    return url ? [{ label: link.label || 'Open booking search', url }] : []
+  })
+  if (!options.length) return null
+  return <Dialog>
+    <DialogTrigger asChild>
+      <button className="compact-button compact-button--outline trip-booking-button" type="button"><Icon name="aircraft" />Booking</button>
+    </DialogTrigger>
+    <DialogContent>
+      <DialogTitle>Booking options</DialogTitle>
+      <DialogDescription>Choose a program to open its booking search.</DialogDescription>
+      <ul className="trip-booking-links">
+        {options.map((option, index) => <li key={index}>
+          <a href={option.url} target="_blank" rel="noopener noreferrer">{option.label}</a>
+        </li>)}
+      </ul>
+    </DialogContent>
+  </Dialog>
 }
 
 function bookingUrl(value: string | null) {
@@ -35,53 +54,85 @@ function TripRow({ trip, route }: { trip: FlightTrip; route?: string }) {
   const [open, setOpen] = useState(false)
   const detailsId = useId()
   const flights = trip.flight_numbers.join(' / ') || 'Flight numbers not reported'
+  const carriers = [...new Set(trip.carrier_names ?? trip.carriers)]
+  const dayOffset = arrivalDayOffset(trip.departs_at_local, trip.arrives_at_local)
+  const segments = trip.segments.length ? trip.segments : [{
+    flight_number: flights, carrier_name: carriers.join(', ') || null, carrier: null,
+    origin_airport: null, destination_airport: null,
+    departs_at_local: trip.departs_at_local, arrives_at_local: trip.arrives_at_local,
+  }]
   return <article className="availability-flight" aria-label={`Flight ${flights}`}>
     <div className="availability-flight-summary" onClick={(event) => {
       if (event.target instanceof Element && !event.target.closest('button, a')) setOpen(!open)
     }}>
-      <div className="availability-flight-main">
-        <div className="availability-schedule">
-          <p className="availability-times">
-            <strong><ReportedTime value={trip.departs_at_local} compact /></strong>
-            <Icon name="arrowRight" />
+      <div className="availability-schedule">
+        <p className="availability-times">
+          <strong><ReportedTime value={trip.departs_at_local} compact /></strong>
+          <Icon name="arrowRight" />
+          <span className="availability-arrival-time">
             <strong><ReportedTime value={trip.arrives_at_local} compact /></strong>
-            {trip.arrives_at_local.slice(0, 10) !== trip.departs_at_local.slice(0, 10)
-              && <span>{trip.arrives_at_local.slice(0, 10)}</span>}
-          </p>
-          <p>{route && `${route} · `}{flights}</p>
-        </div>
-        <div className="availability-journey">
-          <span>{Math.floor(trip.duration_minutes / 60)}h {trip.duration_minutes % 60}m</span>
-          <span>{trip.stops === 0 ? 'Nonstop' : `${trip.stops} ${trip.stops === 1 ? 'stop' : 'stops'}`}</span>
-        </div>
+            {dayOffset !== 0 && <span className="availability-day-offset"
+              title={trip.arrives_at_local.slice(0, 10)}
+              aria-label={`Arrival ${Math.abs(dayOffset)} ${Math.abs(dayOffset) === 1 ? 'day' : 'days'} ${dayOffset > 0 ? 'later' : 'earlier'}`}>
+              {dayOffset > 0 ? '+' : ''}{dayOffset}
+            </span>}
+          </span>
+        </p>
+        <p>{route && `${route} · `}{flights}</p>
+      </div>
+      <div className="availability-journey">
+        <span>{Math.floor(trip.duration_minutes / 60)}h {trip.duration_minutes % 60}m</span>
+        <span>{trip.stops === 0 ? 'Nonstop' : `${trip.stops} ${trip.stops === 1 ? 'stop' : 'stops'}`}</span>
+      </div>
+      <div className="availability-flight-carriers">
+        {(carriers.length ? carriers : ['Airline not reported']).map((carrier) => <div className="availability-flight-carrier" key={carrier}>
+          <span className="availability-airline-mark" aria-hidden="true"><Icon name="aircraft" /></span>
+          <span>{carrier}</span>
+        </div>)}
+      </div>
+      <div className="availability-flight-price">
         <div className="availability-fare">
           <strong>{trip.points === null ? 'Points not reported' : <>{trip.points.toLocaleString('en-US')}<small> pts</small></>}</strong>
           <span>{fees(trip)}</span>
         </div>
+        <button className="compact-button compact-button--icon availability-flight-toggle"
+          aria-label={`${open ? 'Hide' : 'Show'} flight details for ${flights}`}
+          aria-expanded={open} aria-controls={detailsId} onClick={() => setOpen(!open)}>
+          <Icon name="chevronDown" />
+        </button>
       </div>
-      <button className="compact-button compact-button--icon availability-flight-toggle"
-        aria-label={`${open ? 'Hide' : 'Show'} flight details for ${flights}`}
-        aria-expanded={open} aria-controls={detailsId} onClick={() => setOpen(!open)}>
-        <Icon name="chevronDown" />
-      </button>
     </div>
     <div id={detailsId} className="availability-segment-content" hidden={!open}>
-      <p>Carriers: {trip.carriers.join(', ') || 'Not reported'} · {trip.reported_seats === null ? 'Seats not reported' : `Reported seats: ${trip.reported_seats}`}</p>
-      <p>Departure: <ReportedTime value={trip.departs_at_local} /> · Arrival: <ReportedTime value={trip.arrives_at_local} /></p>
-      {trip.provider_updated_at && <p>Provider updated: <ReportedTime value={trip.provider_updated_at} /></p>}
-      {trip.segments.length ? <ol>{trip.segments.map((segment, index) => <li key={index}>
-        <strong>{segment.origin_airport ?? 'Airport not reported'} → {segment.destination_airport ?? 'Airport not reported'}</strong>
-        <span>{segment.flight_number ?? 'Flight number not reported'}</span>
-        <span>Departure: <ReportedTime value={segment.departs_at_local} /></span>
-        <span>Arrival: <ReportedTime value={segment.arrives_at_local} /></span>
-      </li>)}</ol> : <p>Segment schedules not reported.</p>}
+      <table className="availability-trip-table">
+        <caption>Trip details</caption>
+        <thead><tr>
+          <th scope="col">Route</th><th scope="col">Carrier</th><th scope="col">Flight</th>
+          <th scope="col">Departure</th><th scope="col">Arrival</th><th scope="col">Last Updated</th>
+        </tr></thead>
+        <tbody>{segments.map((segment, index) => <tr key={index}>
+          <th scope="row">{trip.segments.length
+            ? `${segment.origin_airport ?? 'Not reported'} → ${segment.destination_airport ?? 'Not reported'}`
+            : route ?? 'Not reported'}</th>
+          <td>{segment.carrier_name || segment.carrier || (carriers.length === 1 ? carriers[0] : 'Not reported')}</td>
+          <td>{segment.flight_number ?? 'Not reported'}</td>
+          <td><ReportedTime value={segment.departs_at_local} /></td>
+          <td><ReportedTime value={segment.arrives_at_local} /></td>
+          {index === 0 && <td rowSpan={segments.length}>
+            {trip.provider_updated_at ? <time dateTime={trip.provider_updated_at}>
+              {formatUpdatedAt(trip.provider_updated_at)}
+            </time> : 'Not reported'}
+          </td>}
+        </tr>)}</tbody>
+      </table>
     </div>
   </article>
 }
 
-export default function TripDetails({ response, cabin, route }: { response: TripDetailsResponse; cabin: ChatCabin; route?: string }) {
+export default function TripDetails({ response, cabin, route }: {
+  response: Pick<TripDetailsResponse, 'trips' | 'booking_links'>; cabin: ChatCabin; route?: string
+}) {
   const [page, setPage] = useState(1)
-  const [sort, setSort] = useState('reported')
+  const [sort, setSort] = useState('points')
   const [selectedCabin, setSelectedCabin] = useState<string>(cabin)
   const heading = useRef<HTMLHeadingElement>(null)
   const options = [...cabinOptions, ...[...new Set(response.trips.map((trip) => trip.cabin))]
@@ -115,13 +166,13 @@ export default function TripDetails({ response, cabin, route }: { response: Trip
           heading.current?.scrollIntoView?.({ block: 'start' })
         }}>
           <option value="reported">Provider order</option>
-          <option value="departure">Reported departure</option>
+          <option value="departure">Departure time</option>
           <option value="points">Lowest points</option>
           <option value="duration">Shortest duration</option>
         </select>
       </label>}
+      <BookingOptions links={response.booking_links} />
     </div>
-    <p className="availability-list-note">Times are shown as reported, without timezone conversion. Prices and seats may differ from the summary; confirm with the program.</p>
     {trips.length === 0 && <p role="status">No {cabinLabel?.toLowerCase()} trips were returned for this availability.</p>}
     {trips.length > 0 && <>
       <p className="availability-flight-scroll-hint">Scroll sideways to see all flight details.</p>
@@ -134,12 +185,6 @@ export default function TripDetails({ response, cabin, route }: { response: Trip
         setPage(next)
         if (scroll) heading.current?.scrollIntoView?.({ block: 'start' })
       }} />}
-    <div className="trip-booking-links">
-      {response.booking_links.map((link, index) => {
-        const url = bookingUrl(link.url)
-        return url ? <a key={index} href={url} target="_blank" rel="noopener noreferrer">{link.label || 'Open booking search'}</a> : null
-      })}
-    </div>
     </Tabs.Content>
   </Tabs.Root>
 }
