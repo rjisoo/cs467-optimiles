@@ -7,14 +7,16 @@ from pydantic import ValidationError
 from werkzeug.exceptions import HTTPException
 
 from backend.chat import handle_chat
+from backend.database import init_app as init_database
 from backend.errors import UPSTREAM_ERRORS, describe_upstream_error
 from backend.models import ChatRequest, SearchCriteria, SearchResponse
 from backend.openapi import build_openapi
 from backend.search import search_awards
-
+from backend.ext_api.reward_eval import get_banks
 
 def create_app() -> Flask:
     app = Flask(__name__)
+    init_database(app)
 
     @app.get("/")
     def index():
@@ -23,7 +25,7 @@ def create_app() -> Flask:
     @app.get("/docs", strict_slashes=False)
     def api_docs():
         return render_template("swagger_ui.html")
-
+    
     @app.get("/openapi.json")
     def openapi_spec():
         return jsonify(build_openapi(request.script_root or "/"))
@@ -59,14 +61,17 @@ def create_app() -> Flask:
         criteria = SearchCriteria.model_validate(_json_body())
         response = SearchResponse(results=search_awards(criteria))
         return jsonify(response.model_dump(mode="json"))
-
+    
+    @app.get("/banks")
+    def bank_info():
+        return jsonify(get_banks())
+    
     @app.post("/api/chat")
     def chat():
         chat_request = ChatRequest.model_validate(_json_body())
         return jsonify(handle_chat(chat_request).model_dump(mode="json"))
 
     return app
-
 
 def _json_body() -> dict:
     # A missing or malformed body validates as empty, producing a normal 400.

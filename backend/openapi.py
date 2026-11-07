@@ -148,6 +148,41 @@ def build_openapi(server_url: str = "/") -> dict:
                     },
                 }
             },
+            "/banks": {
+                "get": {
+                    "summary": "List available rewards programs",
+                    "description": "Returns bank names with their display names and logo URLs.",
+                    "responses": {
+                        "200": {
+                            "description": "Available rewards programs",
+                            "content": {
+                                "application/json": {
+                                    "schema": {
+                                        "type": "object",
+                                        "additionalProperties": {
+                                            "type": "object",
+                                            "required": ["full_name", "logo_url"],
+                                            "properties": {
+                                                "full_name": {"type": "string"},
+                                                "logo_url": {"type": "string"},
+                                            },
+                                        },
+                                    },
+                                    "example": {
+                                        "Amex": {
+                                            "full_name": "American Express",
+                                            "logo_url": "https://example.com/amex.png",
+                                        }
+                                    },
+                                }
+                            },
+                        },
+                        "500": _error_response(
+                            "Unexpected server error", "Internal server error"
+                        ),
+                    },
+                }
+            },
             "/api/search": {
                 "post": _post_operation(
                     "Search award flights",
