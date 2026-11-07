@@ -4,8 +4,13 @@ import json
 from unittest.mock import AsyncMock, Mock
 
 from backend.ext_api import APIStatusError, SeatsAeroAPI
-from backend.ext_api.seatsaero_models import RawCachedSearchResponse, RawGetTripResponse
-
+from backend.ext_api.seatsaero_models import (
+    RawCachedSearchResponse,
+    RawGetTripResponse,
+    validate_availability_on_reward_value,
+)
+from backend.ext_api.reward_eval import get_reward_value
+from backend.models import CachedSearchResponse
 
 @pytest.mark.parametrize(
     ("method", "test_args", "endpoint", "request_kwargs"),
@@ -232,48 +237,56 @@ def test_maps_validated_raw_response_to_client_json():
                         "airlines": ["TEST-A", "TEST-B"],
                         "remaining_seats": 7,
                         "from_points": 16000,
+                        "from_points_cash_value": get_reward_value(16000),
                         "taxes_fees": 50,
                         "direct_available": True,
                         "direct_airlines": ["TEST-A"],
                         "direct_remaining_seats": 2,
                         "direct_from_points": 16000,
-                        "direct_tax_fees": 50,
+                        "direct_from_points_cash_value": get_reward_value(16000),
+                        "direct_taxes_fees": 50,
                     },
                     "premium": {
                         "available": False,
                         "airlines": [],
                         "remaining_seats": None,
                         "from_points": None,
+                        "from_points_cash_value": None,
                         "taxes_fees": None,
                         "direct_available": False,
                         "direct_airlines": [],
                         "direct_remaining_seats": None,
                         "direct_from_points": None,
-                        "direct_tax_fees": None,
+                        "direct_from_points_cash_value": None,
+                        "direct_taxes_fees": None,
                     },
                     "business": {
                         "available": True,
                         "airlines": ["TEST-B"],
                         "remaining_seats": 1,
                         "from_points": 74000,
+                        "from_points_cash_value": get_reward_value(74000),
                         "taxes_fees": 25,
                         "direct_available": True,
                         "direct_airlines": ["TEST-B"],
                         "direct_remaining_seats": 1,
                         "direct_from_points": 74000,
-                        "direct_tax_fees": 25,
+                        "direct_from_points_cash_value": get_reward_value(74000),
+                        "direct_taxes_fees": 25,
                     },
                     "first": {
                         "available": False,
                         "airlines": [],
                         "remaining_seats": None,
                         "from_points": None,
+                        "from_points_cash_value": None,
                         "taxes_fees": None,
                         "direct_available": False,
                         "direct_airlines": [],
                         "direct_remaining_seats": None,
                         "direct_from_points": None,
-                        "direct_tax_fees": None,
+                        "direct_from_points_cash_value": None,
+                        "direct_taxes_fees": None,
                     },
                 },
             }
@@ -282,6 +295,9 @@ def test_maps_validated_raw_response_to_client_json():
         "cursor": 123456,
         "count": 1,
     }
+
+    validated_response = CachedSearchResponse.model_validate(validated_client_json)
+    assert validated_response.model_dump(mode="json") == validated_client_json
 
 
 def test_map_get_trip_raw_response_to_client_json():
@@ -340,6 +356,7 @@ def test_map_get_trip_raw_response_to_client_json():
                 "source": "united",
                 "cabin": "economy",
                 "points": 15000,
+                "points_cash_value": get_reward_value(15000),
                 "taxes_minor": 560,
                 "taxes_currency": "USD",
                 "reported_seats": 2,
@@ -432,3 +449,17 @@ def test_empty_get_trips_response_to_client_json():
         "booking_links": [],
         "trips": [],
     }
+
+def test_validate_availability_on_reward_value():
+
+    # Test when available is False
+    assert validate_availability_on_reward_value(100, False) is None
+
+    # Test when value is 0
+    assert validate_availability_on_reward_value(0, True) is None
+
+    # Test when available is True and value is non-zero
+    result = validate_availability_on_reward_value(100, True)
+    assert result is not None
+    assert isinstance(result, dict)
+    assert result == get_reward_value(100)
