@@ -3,6 +3,23 @@ import pytest
 from backend.models import ChatRequest, ChatResponse, SearchCriteria, SearchResponse
 
 
+def test_openapi_documents_banks_endpoint(client):
+    response = client.get("/openapi.json")
+    assert response.status_code == 200
+    operation = response.get_json()["paths"]["/banks"]["get"]
+    assert operation["responses"]["200"]["content"]["application/json"]["schema"] == {
+        "type": "object",
+        "additionalProperties": {
+            "type": "object",
+            "required": ["full_name", "logo_url"],
+            "properties": {
+                "full_name": {"type": "string"},
+                "logo_url": {"type": "string"},
+            },
+        },
+    }
+
+
 def test_root_opens_docs(client):
     response = client.get("/")
     assert response.status_code == 302
@@ -30,7 +47,7 @@ def test_openapi_covers_all_api_routes_and_resolves_references(client):
     actual_routes = {
         (rule.rule, method.lower())
         for rule in client.application.url_map.iter_rules()
-        if rule.rule.startswith("/api/")
+        if rule.rule.startswith("/api/") or rule.rule == "/banks"
         for method in rule.methods - {"HEAD", "OPTIONS"}
     }
     documented_routes = {

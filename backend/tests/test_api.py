@@ -1,4 +1,5 @@
 from backend.chat import NOT_CONFIGURED_REPLY
+from backend.ext_api.reward_eval import get_banks
 from backend.models import ChatResponse
 
 VALID_SEARCH = {
@@ -14,6 +15,12 @@ def test_health(client):
     response = client.get("/api/health")
     assert response.status_code == 200
     assert response.get_json() == {"status": "ok"}
+
+
+def test_banks_returns_available_bank_names(client):
+    response = client.get("/banks")
+    assert response.status_code == 200
+    assert response.get_json() == get_banks()
 
 
 def test_search_returns_results(client):
