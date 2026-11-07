@@ -8,7 +8,6 @@ from pydantic import ValidationError
 from werkzeug.exceptions import HTTPException
 
 from backend.chat import handle_chat
-from backend.database import init_app as init_database
 from backend.errors import UPSTREAM_ERRORS, describe_upstream_error
 from backend.models import ChatRequest, SearchCriteria
 from backend.openapi import build_openapi
@@ -16,10 +15,8 @@ from backend.search import get_availability_trips, search_awards
 from backend.ext_api.reward_eval import get_banks
 
 
-
 def create_app() -> Flask:
     app = Flask(__name__)
-    init_database(app)
 
     @app.get("/")
     def index():
