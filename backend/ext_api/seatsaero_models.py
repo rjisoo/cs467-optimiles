@@ -3,7 +3,20 @@ from datetime import datetime
 from typing import Any, ClassVar, TypeAlias
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .reward_eval import get_reward_value
+
 RawNumber: TypeAlias = int | float | str | None
+NumericalNumber: TypeAlias = int | float | None
+
+
+def validate_availability_on_reward_value(
+    value: NumericalNumber, available: bool | None = True
+) -> list[dict] | None:
+    """Returns None if the cabin is not available or the value is 0."""
+    if not available or not value:
+        return None
+
+    return get_reward_value(value)
 
 
 class SeatsAeroModel(BaseModel):
@@ -21,10 +34,10 @@ class RawCabinAvailability(SeatsAeroModel):
     available_direct_raw: bool | str | None = None
     airlines: str | list[str] | None = None
     airlines_direct: str | list[str] | None = None
-    remaining_seats: RawNumber = None
-    remaining_seats_direct: RawNumber = None
-    from_points: RawNumber = None
-    from_points_direct: RawNumber = None
+    remaining_seats: NumericalNumber = None
+    remaining_seats_direct: NumericalNumber = None
+    from_points: NumericalNumber = None
+    from_points_direct: NumericalNumber = None
     taxes_fees: RawNumber = None
     taxes_fees_direct: RawNumber = None
 
@@ -124,14 +137,18 @@ class RawCachedSearchResponse(SeatsAeroModel):
     def to_client_json(self) -> dict[str, Any]:
         """Convert the raw cached search response to a client-facing API format."""
 
-        def parse_airlines(value: str|list|None) -> list[str]:
+        def parse_airlines(value: str | list | None) -> list[str]:
             if isinstance(value, str):
-                return [airline.strip() for airline in value.split(",") if airline.strip()]
+                return [
+                    airline.strip() for airline in value.split(",") if airline.strip()
+                ]
             if isinstance(value, list):
-                return [str(airline).strip() for airline in value if str(airline).strip()]
+                return [
+                    str(airline).strip() for airline in value if str(airline).strip()
+                ]
             return []
 
-        def parse_number(value: RawNumber) -> RawNumber:
+        def parse_number(value: RawNumber) -> NumericalNumber:
             """Parse a raw number value, converting it to int or float if possible."""
             if isinstance(value, str):
                 try:
@@ -143,7 +160,9 @@ class RawCachedSearchResponse(SeatsAeroModel):
                         return value
             return value
 
-        def validate_availability_on_value(value: RawNumber, available: bool | None) -> RawNumber:
+        def validate_availability_on_value(
+            value: NumericalNumber, available: bool | None
+        ) -> NumericalNumber:
             """Returns None if the cabin is not available or the value is 0."""
             if not available or not value:
                 return None
@@ -166,6 +185,9 @@ class RawCachedSearchResponse(SeatsAeroModel):
                     "from_points": validate_availability_on_value(
                         parse_number(raw_fields.get(f"{prefix}MileageCost")), available
                     ),
+                    "from_points_cash_value": validate_availability_on_reward_value(
+                        parse_number(raw_fields.get(f"{prefix}MileageCost")), available
+                    ),
                     "taxes_fees": validate_availability_on_value(
                         parse_number(raw_fields.get(f"{prefix}TotalTaxes")),
                         available,
@@ -182,7 +204,11 @@ class RawCachedSearchResponse(SeatsAeroModel):
                         parse_number(raw_fields.get(f"{prefix}DirectMileageCost")),
                         direct_available,
                     ),
-                    "direct_tax_fees": validate_availability_on_value(
+                    "direct_from_points_cash_value": validate_availability_on_reward_value(
+                        parse_number(raw_fields.get(f"{prefix}DirectMileageCost")),
+                        direct_available,
+                    ),
+                    "direct_taxes_fees": validate_availability_on_value(
                         parse_number(raw_fields.get(f"{prefix}DirectTotalTaxes")),
                         direct_available,
                     ),
@@ -272,10 +298,10 @@ class RawGetTripFlights(SeatsAeroModel):
     availability_id: str
     source: str
     cabin: str
-    points: RawNumber
+    points: NumericalNumber
     taxes_minor: RawNumber = None
     taxes_currency: str | None = None
-    reported_seats: RawNumber
+    reported_seats: NumericalNumber
     departs_at_local: str
     arrives_at_local: str
     duration_minutes: int
@@ -369,6 +395,9 @@ class RawGetTripResponse(SeatsAeroModel):
                     "source": trip.source,
                     "cabin": trip.cabin,
                     "points": trip.points,
+                    "points_cash_value": validate_availability_on_reward_value(
+                        trip.points
+                    ),
                     "taxes_minor": trip.taxes_minor,
                     "taxes_currency": trip.taxes_currency,
                     "reported_seats": trip.reported_seats,

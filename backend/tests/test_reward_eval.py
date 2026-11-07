@@ -30,15 +30,13 @@ def test_get_reward_value():
     points = 1000
     banks = ["Chase", "Amex"]
     result = get_reward_value(points, banks)
-    assert isinstance(result, list)
-    for entry in result:
-        assert (
-            entry["cash_value"] == original_json[entry["bank"]]["point_value"] * points
-        )
-        assert entry["logo_url"] == original_json[entry["bank"]]["logo_url"]
-        assert entry["full_name"] == original_json[entry["bank"]]["full_name"]
+    assert set(result) == set(banks)
+    for bank, entry in result.items():
+        assert entry["cash_value"] == original_json[bank]["point_value"] * points
+        assert entry["logo_url"] == original_json[bank]["logo_url"]
+        assert entry["full_name"] == original_json[bank]["full_name"]
         assert entry["points"] == points
-        assert entry["point_value"] == original_json[entry["bank"]]["point_value"]
+        assert entry["point_value"] == original_json[bank]["point_value"]
 
 
 def test_get_all_reward_info():
@@ -49,8 +47,13 @@ def test_get_all_reward_info():
 
 def test_get_banks():
     banks = get_banks()
-    assert isinstance(banks, list)
-    assert set(banks) == set(original_json.keys())
+    assert banks == {
+        bank: {
+            "full_name": info["full_name"],
+            "logo_url": info["logo_url"],
+        }
+        for bank, info in original_json.items()
+    }
 
 
 def test_reinitialize_reward_eval(monkeypatch):

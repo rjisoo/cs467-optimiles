@@ -2,7 +2,7 @@ import logging
 import sys
 from logging.config import dictConfig
 from pathlib import Path
-import os 
+import os
 
 LOGGING_CONFIG = {
     "version": 1,
@@ -22,9 +22,10 @@ LOGGING_CONFIG = {
         "file": {
             "class": "logging.handlers.RotatingFileHandler",
             "formatter": "default",
-            "filename": os.getenv("BACKEND_LOG_PATH") or Path(__file__).resolve().parent.parent / "logs" / "backend.log",
+            "filename": os.getenv("BACKEND_LOG_PATH")
+            or Path(__file__).resolve().parent.parent / "logs" / "backend.log",
             "maxBytes": 10485760,  # 10 MB
-            "backupCount": 5,      # Keep up to 5 backup files
+            "backupCount": 5,  # Keep up to 5 backup files
             "encoding": "utf-8",
         },
     },

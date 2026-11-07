@@ -7,6 +7,7 @@ from backend.chat import NOT_CONFIGURED_REPLY
 from backend.ext_api import APIQuotaExceeded, APIRouterError, APITimeout
 from backend.models import ChatResponse, GetTripResponse, SearchCriteria
 from backend.search import search_awards
+from backend.ext_api.reward_eval import get_banks
 
 VALID_SEARCH = {
     "origin": "sfo",
@@ -21,6 +22,12 @@ def test_health(client):
     response = client.get("/api/health")
     assert response.status_code == 200
     assert response.get_json() == {"status": "ok"}
+
+
+def test_banks_returns_available_bank_names(client):
+    response = client.get("/banks")
+    assert response.status_code == 200
+    assert response.get_json() == get_banks()
 
 
 def test_search_returns_results(client):
@@ -61,7 +68,9 @@ def test_search_rejects_same_origin_and_destination(client):
 
 
 def test_search_rejects_return_before_departure(client):
-    response = client.post("/api/search", json={**VALID_SEARCH, "return_date": "2026-11-01"})
+    response = client.post(
+        "/api/search", json={**VALID_SEARCH, "return_date": "2026-11-01"}
+    )
     assert response.status_code == 400
 
 
@@ -76,7 +85,9 @@ def test_chat_returns_reply(client, monkeypatch):
         return ChatResponse(reply="Where are you flying from?", results=[])
 
     monkeypatch.setattr("backend.chat.run_chat", fake_run_chat)
-    response = client.post("/api/chat", json={"message": "Tokyo in December?", "history": []})
+    response = client.post(
+        "/api/chat", json={"message": "Tokyo in December?", "history": []}
+    )
     assert response.status_code == 200
     assert response.get_json() == {"reply": "Where are you flying from?", "results": []}
 
