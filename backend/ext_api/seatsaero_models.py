@@ -6,8 +6,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from .reward_eval import get_reward_value
 
 RawNumber: TypeAlias = int | float | str | None
-
-def validate_availability_on_reward_value(value: RawNumber, available: bool | None=True) -> list[dict] | None:
+NumericalNumber: TypeAlias = int | float | None
+def validate_availability_on_reward_value(value: NumericalNumber, available: bool | None=True) -> list[dict] | None:
     """Returns None if the cabin is not available or the value is 0."""
     if not available or not value:
         return None
@@ -29,10 +29,10 @@ class RawCabinAvailability(SeatsAeroModel):
     available_direct_raw: bool | str | None = None
     airlines: str | list[str] | None = None
     airlines_direct: str | list[str] | None = None
-    remaining_seats: RawNumber = None
-    remaining_seats_direct: RawNumber = None
-    from_points: RawNumber = None
-    from_points_direct: RawNumber = None
+    remaining_seats: NumericalNumber = None
+    remaining_seats_direct: NumericalNumber = None
+    from_points: NumericalNumber = None
+    from_points_direct: NumericalNumber = None
     taxes_fees: RawNumber = None
     taxes_fees_direct: RawNumber = None
 
@@ -139,7 +139,7 @@ class RawCachedSearchResponse(SeatsAeroModel):
                 return [str(airline).strip() for airline in value if str(airline).strip()]
             return []
 
-        def parse_number(value: RawNumber) -> RawNumber:
+        def parse_number(value: RawNumber) -> NumericalNumber:
             """Parse a raw number value, converting it to int or float if possible."""
             if isinstance(value, str):
                 try:
@@ -151,7 +151,7 @@ class RawCachedSearchResponse(SeatsAeroModel):
                         return value
             return value
 
-        def validate_availability_on_value(value: RawNumber, available: bool | None) -> RawNumber:
+        def validate_availability_on_value(value: NumericalNumber, available: bool | None) -> NumericalNumber:
             """Returns None if the cabin is not available or the value is 0."""
             if not available or not value:
                 return None
@@ -260,10 +260,10 @@ class RawGetTripFlights(SeatsAeroModel):
     availability_id: str
     source: str
     cabin: str
-    points: RawNumber
+    points: NumericalNumber
     taxes_minor: RawNumber = None
     taxes_currency: str | None = None
-    reported_seats: RawNumber
+    reported_seats: NumericalNumber
     departs_at_local: str
     arrives_at_local: str
     duration_minutes: int
