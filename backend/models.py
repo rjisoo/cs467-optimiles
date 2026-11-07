@@ -62,6 +62,14 @@ class SearchResponse(BaseModel):
 
 
 # Seats.Aero Cached Search Models
+class RewardValue(BaseModel):
+    full_name: str
+    points: int
+    point_value: float
+    cash_value: float
+    logo_url: str
+
+
 class CabinAvailability(BaseModel):
     available: bool
     airlines: list[str]
@@ -71,6 +79,10 @@ class CabinAvailability(BaseModel):
     from_points: int | None = Field(
         default=None, description="Points cost; null when unavailable or not reported"
     )
+    from_points_cash_value: dict[str, RewardValue] | None = Field(
+        default=None,
+        description="Estimated cash value of points from each rewards program",
+    )
     taxes_fees: int | float | None = Field(
         default=None,
         description="Taxes and fees in minor units; null when unavailable or not reported",
@@ -79,7 +91,11 @@ class CabinAvailability(BaseModel):
     direct_airlines: list[str]
     direct_remaining_seats: int | None = None
     direct_from_points: int | None = None
-    direct_tax_fees: int | float | None = None
+    direct_from_points_cash_value: dict[str, RewardValue] | None = Field(
+        default=None,
+        description="Estimated cash value of direct-flight points from each rewards program",
+    )
+    direct_taxes_fees: int | float | None = None
 
 
 class AvailabilityCabins(BaseModel):
@@ -131,6 +147,10 @@ class GetTripFlight(BaseModel):
     source: str
     cabin: str
     points: int | float | None = Field(description="Points cost")
+    points_cash_value: dict[str, RewardValue] | None = Field(
+        default=None,
+        description="Estimated cash value of points from each rewards program",
+    )
     taxes_minor: int | float | None = Field(
         default=None, description="Taxes and fees in minor units of taxes_currency"
     )
