@@ -41,7 +41,9 @@ def test_search_rejects_same_origin_and_destination(client):
 
 
 def test_search_rejects_return_before_departure(client):
-    response = client.post("/api/search", json={**VALID_SEARCH, "return_date": "2026-11-01"})
+    response = client.post(
+        "/api/search", json={**VALID_SEARCH, "return_date": "2026-11-01"}
+    )
     assert response.status_code == 400
 
 
@@ -56,7 +58,9 @@ def test_chat_returns_reply(client, monkeypatch):
         return ChatResponse(reply="Where are you flying from?", results=[])
 
     monkeypatch.setattr("backend.chat.run_chat", fake_run_chat)
-    response = client.post("/api/chat", json={"message": "Tokyo in December?", "history": []})
+    response = client.post(
+        "/api/chat", json={"message": "Tokyo in December?", "history": []}
+    )
     assert response.status_code == 200
     assert response.get_json() == {"reply": "Where are you flying from?", "results": []}
 

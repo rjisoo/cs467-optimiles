@@ -14,8 +14,10 @@ def bridge_run(coro):
     """Submit a coroutine to the persistent event loop and return results"""
     return asyncio.run_coroutine_threadsafe(coro, _loop).result(timeout=300)
 
+
 @atexit.register
 def _shutdown():
     _loop.call_soon_threadsafe(_loop.stop)
 
-#Logger Setup
+
+# Logger Setup

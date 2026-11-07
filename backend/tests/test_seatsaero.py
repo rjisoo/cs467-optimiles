@@ -14,6 +14,7 @@ from backend.ext_api.seatsaero_models import (
 from backend.ext_api.reward_eval import get_reward_value
 from backend.models import CachedSearchResponse
 
+
 @pytest.mark.parametrize(
     ("method", "test_args", "endpoint", "request_kwargs"),
     [
@@ -481,28 +482,36 @@ def test_empty_get_trips_response_to_client_json():
 @pytest.fixture
 def raw_trip_payload():
     return {
-        "data": [{
-            "ID": "trip-1",
-            "AvailabilityID": "availability-1",
-            "Source": "united",
-            "Cabin": "economy",
-            "MileageCost": "15000",
-            "RemainingSeats": "2",
-            "DepartsAt": "2030-01-01T09:00:00",
-            "ArrivesAt": "2030-01-01T12:00:00",
-            "TotalDuration": 180,
-            "Stops": 0,
-            "Carriers": ["UA"],
-            "FlightNumbers": ["UA123"],
-            "AvailabilitySegments": [],
-        }]
+        "data": [
+            {
+                "ID": "trip-1",
+                "AvailabilityID": "availability-1",
+                "Source": "united",
+                "Cabin": "economy",
+                "MileageCost": "15000",
+                "RemainingSeats": "2",
+                "DepartsAt": "2030-01-01T09:00:00",
+                "ArrivesAt": "2030-01-01T12:00:00",
+                "TotalDuration": 180,
+                "Stops": 0,
+                "Carriers": ["UA"],
+                "FlightNumbers": ["UA123"],
+                "AvailabilitySegments": [],
+            }
+        ]
     }
 
 
 @pytest.mark.parametrize(
     ("raw_points", "expected_points"),
-    [("15000", 15000), (15000, 15000), (15000.5, 15000.5),
-     ("0", 0), (0, 0), (None, None)],
+    [
+        ("15000", 15000),
+        (15000, 15000),
+        (15000.5, 15000.5),
+        ("0", 0),
+        (0, 0),
+        (None, None),
+    ],
 )
 def test_trip_mileage_numeric_types_and_reward_values(
     raw_trip_payload, raw_points, expected_points
@@ -535,7 +544,6 @@ def test_invalid_trip_numeric_fields_raise_upstream_error(raw_trip_payload, fiel
 
 
 def test_validate_availability_on_reward_value():
-
     # Test when available is False
     assert validate_availability_on_reward_value(100, False) is None
 

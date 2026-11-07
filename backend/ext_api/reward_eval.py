@@ -33,17 +33,19 @@ def get_all_reward_info():
     """Get reward values and logo URLs for all banks."""
     return reward_programs
 
+
 def get_banks() -> dict:
     """Get a list of all banks."""
     return {
         bank: {
-            "full_name": reward_programs[bank]["full_name"], 
-            "logo_url": reward_programs[bank]["logo_url"]
+            "full_name": reward_programs[bank]["full_name"],
+            "logo_url": reward_programs[bank]["logo_url"],
         }
         for bank in reward_programs
     }
 
-def get_reward_value(points: int|float, banks: list[str] | None = None) -> list[dict]:
+
+def get_reward_value(points: int | float, banks: list[str] | None = None) -> list[dict]:
     """Get reward value for a given number of points and a list of banks.
     return: list of dicts with bank name, full name, points, value, and logo_url
     """
@@ -52,14 +54,11 @@ def get_reward_value(points: int|float, banks: list[str] | None = None) -> list[
         banks = list(reward_programs.keys())
     for bank in banks:
         if bank in reward_programs:
-            result[bank] = (
-                {
-                    "full_name": reward_programs[bank]["full_name"],
-                    "points": points,
-                    "point_value": reward_programs[bank]["point_value"],
-                    "cash_value": reward_programs[bank]["point_value"] * points,
-                    "logo_url": reward_programs[bank]["logo_url"],
-                }
-            )
+            result[bank] = {
+                "full_name": reward_programs[bank]["full_name"],
+                "points": points,
+                "point_value": reward_programs[bank]["point_value"],
+                "cash_value": reward_programs[bank]["point_value"] * points,
+                "logo_url": reward_programs[bank]["logo_url"],
+            }
     return result
-

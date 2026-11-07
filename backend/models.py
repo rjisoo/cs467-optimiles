@@ -64,7 +64,7 @@ class SearchResponse(BaseModel):
 # Seats.Aero Cached Search Models
 class RewardValue(BaseModel):
     full_name: str
-    points: int
+    points: int | float
     point_value: float
     cash_value: float
     logo_url: str
@@ -76,7 +76,7 @@ class CabinAvailability(BaseModel):
     remaining_seats: int | None = Field(
         default=None, description="Seats left; null when unavailable or not reported"
     )
-    from_points: int | None = Field(
+    from_points: int | float | None = Field(
         default=None, description="Points cost; null when unavailable or not reported"
     )
     from_points_cash_value: dict[str, RewardValue] | None = Field(
@@ -90,7 +90,7 @@ class CabinAvailability(BaseModel):
     direct_available: bool
     direct_airlines: list[str]
     direct_remaining_seats: int | None = None
-    direct_from_points: int | None = None
+    direct_from_points: int | float | None = None
     direct_from_points_cash_value: dict[str, RewardValue] | None = Field(
         default=None,
         description="Estimated cash value of direct-flight points from each rewards program",
