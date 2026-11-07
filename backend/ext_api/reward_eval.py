@@ -43,7 +43,7 @@ def get_banks() -> dict:
         for bank in reward_programs
     }
 
-def get_reward_value(points: int, banks: list[str] | None = None) -> list[dict]:
+def get_reward_value(points: int|float, banks: list[str] | None = None) -> list[dict]:
     """Get reward value for a given number of points and a list of banks.
     return: list of dicts with bank name, full name, points, value, and logo_url
     """
