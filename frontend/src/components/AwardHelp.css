@@ -10,7 +10,10 @@
   white-space: nowrap;
 }
 
-.help-toggle .icon { width: 1.285714em; height: 1.285714em; }
+.help-toggle .icon {
+  width: 1.285714em;
+  height: 1.285714em;
+}
 
 @media (any-pointer: coarse) {
   .help-toggle::after {
@@ -24,8 +27,6 @@
     transform: translate(-50%, -50%);
   }
 }
-
-.help-close { font-size: var(--font-control); }
 
 .help-toggle:hover,
 .help-close:hover {
@@ -53,9 +54,6 @@
 }
 
 .help-header {
-  display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
   gap: var(--space-2);
 }

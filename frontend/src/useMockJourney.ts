@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { SearchResponse } from './services/availability-api'
+import { ChatRequestError, sendChatMessage } from './services/chat-api'
 import {
   createTripDraft,
   demoCriteria,
@@ -14,9 +15,11 @@ import { validateTripFields } from './lib/trip-validation'
 
 export type SearchTurn = {
   id: number
+  source: 'chat' | 'form'
   criteria: TripCriteria
   request: string
   status: 'pending' | 'success' | 'canceled' | 'failed'
+  error?: string
   results?: SearchResponse
 }
 
@@ -33,6 +36,7 @@ export default function useMockJourney(seedPreview = false) {
     }
     return [{
       id: 1,
+      source: 'chat',
       criteria: structuredClone(demoCriteria),
       request: demoRequest,
       status: 'success',
@@ -71,7 +75,11 @@ export default function useMockJourney(seedPreview = false) {
     })
 
     try {
-      const results = await searchMock(turn.criteria, controller.signal, fail)
+      // Keep the existing sample display; the chat response body is not consumed.
+      const [results] = await Promise.all([
+        searchMock(turn.criteria, controller.signal, fail),
+        turn.source === 'chat' ? sendChatMessage(turn.request, controller.signal) : undefined,
+      ])
       if (active.current !== controller) {
         return
       }
@@ -87,13 +95,15 @@ export default function useMockJourney(seedPreview = false) {
         }
         return item
       }))
-    } catch {
+    } catch (error) {
+      controller.abort()
       if (active.current !== controller) {
         return
       }
+      const message = error instanceof ChatRequestError ? error.message : undefined
       setTurns((previous) => previous.map((item) => {
         if (item.id === turn.id) {
-          return { ...item, status: 'failed' }
+          return { ...item, status: 'failed', error: message }
         }
         return item
       }))
@@ -148,7 +158,7 @@ export default function useMockJourney(seedPreview = false) {
       request = `${criteria.origin} to ${criteria.destination}, ${criteria.departureDate}, one way, `
         + `${criteria.adults} ${adultLabel}. Compare ${criteria.cabins.join(', ')}.`
     }
-    void run({ id: ++nextId.current, criteria, request, status: 'pending' }, fail)
+    void run({ id: ++nextId.current, source, criteria, request, status: 'pending' }, fail)
   }
 
   function cancel() {
@@ -174,7 +184,7 @@ export default function useMockJourney(seedPreview = false) {
     if (active.current || (turn.status !== 'failed' && turn.status !== 'canceled')) {
       return
     }
-    void run({ ...turn, status: 'pending' }, false, true)
+    void run({ ...turn, status: 'pending', error: undefined }, false, true)
   }
 
   return {

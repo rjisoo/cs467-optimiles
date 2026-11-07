@@ -1,27 +1,32 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import AvailabilityResults from './AvailabilityResults'
+import MarkdownMessage from './MarkdownMessage'
 import Icon from './Icon'
-import { cabinOptions } from '../services/availability-prototype'
-import { mockComparisons } from '../services/mock-comparisons'
-import type { SearchTurn } from '../useMockJourney'
+import type { SearchTurn } from '../useChatJourney'
 
 type Props = {
   turns: SearchTurn[]
   lastActionId: number
   pending: boolean
   onRetry: (turn: SearchTurn) => void
-  onComparisonChange: (turnId: number, cabins: string[]) => void
 }
 
 const statusText = {
-  pending: 'Searching award options… Local mock only.',
-  success: 'Mock availability summaries loaded. No live search.',
+  pending: 'Searching award options…',
+  success: 'Response received.',
   canceled: 'Canceled. Stopped waiting; draft and earlier results retained.',
-  failed: 'Mock search failed. This does not mean no awards exist. Draft and earlier results retained.',
+  failed: 'Request failed. This does not mean no awards exist. Draft and earlier results retained.',
 }
 
-export default function Conversation({ turns, lastActionId, pending, onRetry, onComparisonChange }: Props) {
+function turnStatus(turn: SearchTurn): string {
+  if (turn.status === 'failed' && turn.error) {
+    return turn.error
+  }
+  return statusText[turn.status]
+}
+
+export default function Conversation({ turns, lastActionId, pending, onRetry }: Props) {
   const scroller = useRef<HTMLDivElement>(null)
   const following = useRef(true)
   const [hasNewResults, setHasNewResults] = useState(false)
@@ -82,9 +87,6 @@ export default function Conversation({ turns, lastActionId, pending, onRetry, on
         }}
       >
         {turns.map((turn) => {
-          const initialCabins = cabinOptions
-            .filter((cabin) => turn.criteria.cabins.includes(cabin.label))
-            .map((cabin) => cabin.key)
           const canRetry = turn.status === 'failed' || turn.status === 'canceled'
 
           return (
@@ -94,23 +96,16 @@ export default function Conversation({ turns, lastActionId, pending, onRetry, on
                 <span><Icon name="aircraft" /></span>
                 <strong>OptiMiles</strong>
               </div>
-              {turn.status === 'success' && turn.results ? (
+              {turn.status === 'success' && turn.response ? (
                 <AvailabilityResults
                   searchId={turn.id}
-                  response={turn.results}
-                  mockComparisons={mockComparisons}
-                  initialCabins={initialCabins}
-                  onComparisonCabinsChange={(cabins) => {
-                    const labels = cabinOptions
-                      .filter((cabin) => cabins.includes(cabin.key))
-                      .map((cabin) => cabin.label)
-                    onComparisonChange(turn.id, labels)
-                  }}
+                  response={turn.response}
+                  message={turn.response.reply ? <MarkdownMessage>{turn.response.reply}</MarkdownMessage> : undefined}
                 />
               ) : (
                 <div className="conversation-response">
-                  <p>{statusText[turn.status]}</p>
-                  {turn.status === 'pending' && <progress aria-label="Searching mock awards" />}
+                  <p>{turnStatus(turn)}</p>
+                  {turn.status === 'pending' && <progress aria-label="Searching awards" />}
                   {canRetry && (
                     <Button disabled={pending} onClick={() => onRetry(turn)}>
                       {turn.status === 'failed' ? 'Retry' : 'Search again'}
@@ -123,7 +118,7 @@ export default function Conversation({ turns, lastActionId, pending, onRetry, on
         })}
       </div>
       <div className="conversation-feedback toolbar">
-        <p role="status">{statusText[lastAction.status]}</p>
+        <p role="status">{turnStatus(lastAction)}</p>
         {hasNewResults && <Button onClick={showNewResults}>New results</Button>}
       </div>
     </>

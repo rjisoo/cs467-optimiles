@@ -1,18 +1,20 @@
 """Flask app. Routes stay thin: validate input, call a logic module, return JSON."""
 
 import json
+import re
 
-from flask import Flask, jsonify, redirect, render_template, request, url_for
+from flask import Flask, abort, jsonify, redirect, render_template, request, url_for
 from pydantic import ValidationError
 from werkzeug.exceptions import HTTPException
 
 from backend.chat import handle_chat
 from backend.database import init_app as init_database
 from backend.errors import UPSTREAM_ERRORS, describe_upstream_error
-from backend.models import ChatRequest, SearchCriteria, SearchResponse
+from backend.models import ChatRequest, SearchCriteria
 from backend.openapi import build_openapi
-from backend.search import search_awards
+from backend.search import get_availability_trips, search_awards
 from backend.ext_api.reward_eval import get_banks
+
 
 
 def create_app() -> Flask:
@@ -60,8 +62,7 @@ def create_app() -> Flask:
     @app.post("/api/search")
     def search():
         criteria = SearchCriteria.model_validate(_json_body())
-        response = SearchResponse(results=search_awards(criteria))
-        return jsonify(response.model_dump(mode="json"))
+        return jsonify(search_awards(criteria).model_dump(mode="json"))
 
     @app.get("/banks")
     def bank_info():
@@ -71,6 +72,12 @@ def create_app() -> Flask:
     def chat():
         chat_request = ChatRequest.model_validate(_json_body())
         return jsonify(handle_chat(chat_request).model_dump(mode="json"))
+
+    @app.get("/api/availability/<availability_id>/trips")
+    def availability_trips(availability_id: str):
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,200}", availability_id):
+            abort(400)
+        return jsonify(get_availability_trips(availability_id).model_dump(mode="json"))
 
     return app
 

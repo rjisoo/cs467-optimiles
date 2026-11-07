@@ -3,6 +3,8 @@ import { cleanup } from '@testing-library/react'
 import { afterEach, beforeEach, vi } from 'vitest'
 
 beforeEach(() => {
+  vi.stubGlobal('fetch', vi.fn((url: string) => Promise.reject(new Error(`Unexpected request: ${url}`))))
+
   // JSDOM does not evaluate media queries. Tests default to desktop navigation.
   vi.stubGlobal('matchMedia', vi.fn((query: string) => ({
     matches: false,

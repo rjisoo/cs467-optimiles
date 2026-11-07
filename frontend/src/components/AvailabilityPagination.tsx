@@ -1,4 +1,3 @@
-import { useRef } from 'react'
 import { getPageNumbers } from '../services/availability-presentation'
 
 type Props = {
@@ -22,8 +21,6 @@ export default function AvailabilityPagination({
 }: Props) {
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
   const current = Math.max(1, Math.min(page, pageCount))
-  const jumpInput = useRef<HTMLInputElement>(null)
-  const pointerJump = useRef(false)
   if (total <= 5) {
     return null
   }
@@ -86,49 +83,6 @@ export default function AvailabilityPagination({
             ))}
           </select>
         </label>
-      )}
-      {pageCount > 5 && (
-        <form
-          className="availability-page-jump"
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              pointerJump.current = false
-            }
-          }}
-          onSubmit={(event) => {
-            event.preventDefault()
-            const input = jumpInput.current
-            if (!input?.reportValidity()) {
-              return
-            }
-            const next = input.valueAsNumber
-            if (Number.isInteger(next) && next >= 1 && next <= pageCount) {
-              onPageChange(next, pointerJump.current)
-            }
-          }}
-        >
-          <label>
-            Go to page
-            <input
-              ref={jumpInput}
-              type="number"
-              min={1}
-              max={pageCount}
-              step={1}
-              required
-              placeholder={String(current)}
-            />
-          </label>
-          <button
-            className="compact-button compact-button--outline"
-            type="submit"
-            onClick={(event) => {
-              pointerJump.current = event.detail > 0
-            }}
-          >
-            Go
-          </button>
-        </form>
       )}
     </Container>
   )

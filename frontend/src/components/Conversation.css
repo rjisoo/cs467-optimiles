@@ -110,6 +110,80 @@
   gap: 8px;
 }
 
+.conversation-message-bubble {
+  display: grid;
+  gap: 12px;
+  justify-self: start;
+  width: 100%;
+  max-width: 50rem;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 3px 12px 12px 12px;
+  background: var(--color-surface);
+  overflow-wrap: anywhere;
+}
+
+.message-markdown {
+  min-width: 0;
+  width: 100%;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+
+.message-markdown > * + *,
+.message-markdown li > p + p {
+  margin-top: 0.75em;
+}
+
+.message-markdown ul,
+.message-markdown ol {
+  padding-inline-start: 1.5em;
+}
+
+.message-markdown ul {
+  list-style-type: disc;
+}
+
+.message-markdown ol {
+  list-style-type: decimal;
+}
+
+.message-markdown li + li {
+  margin-top: 0.35em;
+}
+
+.message-markdown :is(h1, h2, h3, h4, h5, h6) {
+  font-family: inherit;
+  font-size: 1.15em;
+  font-weight: 650;
+}
+
+.message-markdown a {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+.message-markdown blockquote {
+  border-inline-start: 2px solid var(--color-border);
+  padding-inline-start: 1em;
+  color: var(--color-text-muted);
+}
+
+.message-markdown pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.message-markdown code {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.message-markdown pre code {
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
 /* Compact trip summary and messages */
 @media (width < 48rem) {
   .current-trip {
@@ -123,14 +197,21 @@
     display: contents;
   }
 
+  .current-trip .availability-list-note {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
   .current-trip-route {
+    grid-column: 1 / -1;
+    grid-row: 2;
     font-size: var(--font-compact-label);
     gap: 5px;
   }
 
   .current-trip-criteria {
     grid-column: 1 / -1;
-    grid-row: 2;
+    grid-row: 3;
     margin-top: 0;
   }
 
@@ -143,9 +224,6 @@
     font-size: var(--font-compact-note);
   }
 
-  .current-trip-edit-note {
-    display: none;
-  }
 
   .conversation-request {
     max-width: 90%;
@@ -197,9 +275,6 @@
     display: none;
   }
 
-  .app-shell.app-shell--conversation #preview-notice {
-    font-size: var(--font-caption);
-  }
 }
 
 @media (max-height: 32rem) {
@@ -212,8 +287,4 @@
     gap: 4px;
   }
 
-  .app-shell.app-shell--conversation #preview-notice {
-    max-height: 3rem;
-    overflow-y: auto;
-  }
 }

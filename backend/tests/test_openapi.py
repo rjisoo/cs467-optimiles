@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from backend.models import ChatRequest, ChatResponse, SearchCriteria, SearchResponse
@@ -45,7 +47,7 @@ def test_openapi_covers_all_api_routes_and_resolves_references(client):
     assert spec["openapi"] == "3.1.0"
     assert spec["servers"] == [{"url": "/"}]
     actual_routes = {
-        (rule.rule, method.lower())
+        (re.sub(r"<(?:[^:<>]+:)?([^<>]+)>", r"{\1}", rule.rule), method.lower())
         for rule in client.application.url_map.iter_rules()
         if rule.rule.startswith("/api/") or rule.rule == "/banks"
         for method in rule.methods - {"HEAD", "OPTIONS"}
@@ -102,3 +104,15 @@ def test_docs_and_requests_follow_application_mount_path(client):
     assert 'url: "/optimiles/openapi.json"' in html
     spec = client.get("/openapi.json", environ_overrides=environment).get_json()
     assert spec["servers"] == [{"url": "/optimiles"}]
+
+
+def test_cabin_is_optional_nullable_in_search_but_concrete_in_results(client):
+    schemas = client.get("/openapi.json").get_json()["components"]["schemas"]
+    criteria_schema = schemas["SearchCriteria"]
+    request_cabin = criteria_schema["properties"]["cabin"]
+    assert "cabin" not in criteria_schema["required"]
+    assert request_cabin["default"] is None
+    assert {option["type"] for option in request_cabin["anyOf"]} == {"string", "null"}
+    result_cabin = schemas["Result"]["properties"]["cabin"]
+    assert result_cabin["type"] == "string"
+    assert set(result_cabin["enum"]) == {"economy", "premium_economy", "business", "first"}

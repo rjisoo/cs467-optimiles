@@ -1,49 +1,66 @@
-import type { AvailabilitySummary, Cabin } from './availability-api'
-import { programName } from './availability-prototype'
+import type { ChatCabin, ChatResult } from './chat-response'
+
+export const cabinOptions: { key: ChatCabin; label: string }[] = [
+  { key: 'economy', label: 'Economy' },
+  { key: 'premium_economy', label: 'Premium economy' },
+  { key: 'business', label: 'Business' },
+  { key: 'first', label: 'First' },
+]
+
+export type AvailabilitySummary = Pick<ChatResult, 'departure_date' | 'program' | 'origin' | 'destination'> & {
+  key: string
+  cabins: Partial<Record<ChatCabin, ChatResult>>
+  availabilityIds: string[]
+}
+
+export function groupSummaries(results: ChatResult[]): AvailabilitySummary[] {
+  const groups = new Map<string, AvailabilitySummary>()
+  for (const result of results) {
+    const { departure_date, program, origin, destination } = result
+    const key = JSON.stringify([departure_date, program, origin, destination])
+    let group = groups.get(key)
+    if (!group) {
+      group = { key, departure_date, program, origin, destination, cabins: {}, availabilityIds: [] }
+      groups.set(key, group)
+    }
+    const current = group.cabins[result.cabin]
+    if (!current || result.points_cost < current.points_cost
+      || (result.points_cost === current.points_cost
+        && (result.cash_fees_usd ?? Infinity) < (current.cash_fees_usd ?? Infinity))) {
+      group.cabins[result.cabin] = result
+    }
+    const id = result.availability_id
+    if (id?.trim() && !group.availabilityIds.includes(id)) group.availabilityIds.push(id)
+  }
+  return [...groups.values()]
+}
 
 export type SummarySort = {
   field: 'date' | 'program' | 'points'
-  cabin?: Cabin
+  cabin?: ChatCabin
   direction: 'asc' | 'desc'
 }
 
 function sortValue(row: AvailabilitySummary, sort: SummarySort): string | number | null {
-  if (sort.field === 'date') {
-    return row.date
-  }
-  if (sort.field === 'program') {
-    return row.source === null ? null : programName(row.source)
-  }
-  const cabin = row.cabins.find((item) => item.cabin === sort.cabin)
-  if (cabin?.available !== true || cabin.from_points === 0) {
-    return null
-  }
-  return cabin.from_points
+  if (sort.field === 'date') return row.departure_date
+  if (sort.field === 'program') return row.program
+  return sort.cabin ? row.cabins[sort.cabin]?.points_cost ?? null : null
 }
 
 export function sortSummaries(rows: AvailabilitySummary[], sort: SummarySort) {
   return [...rows].sort((first, second) => {
     const firstValue = sortValue(first, sort)
     const secondValue = sortValue(second, sort)
-    if (firstValue === null && secondValue !== null) {
-      return 1
-    }
-    if (secondValue === null && firstValue !== null) {
-      return -1
-    }
-
+    if (firstValue === null && secondValue !== null) return 1
+    if (secondValue === null && firstValue !== null) return -1
     let difference = 0
     if (firstValue !== null && secondValue !== null) {
-      if (typeof firstValue === 'string' && typeof secondValue === 'string') {
-        difference = firstValue.localeCompare(secondValue)
-      } else {
-        difference = Number(firstValue) - Number(secondValue)
-      }
+      difference = typeof firstValue === 'string' && typeof secondValue === 'string'
+        ? firstValue.localeCompare(secondValue)
+        : Number(firstValue) - Number(secondValue)
     }
-    const direction = sort.direction === 'asc' ? 1 : -1
-    return difference * direction
-      || first.date.localeCompare(second.date)
-      || first.availability_id.localeCompare(second.availability_id)
+    return difference * (sort.direction === 'asc' ? 1 : -1)
+      || first.departure_date.localeCompare(second.departure_date)
   })
 }
 

@@ -240,6 +240,30 @@ class RawCachedSearchResponse(SeatsAeroModel):
 
 
 # Get Trip Endpoint
+# Fallback names for common US carriers; response metadata takes precedence.
+# https://aspmhelp.faa.gov/index/ASQP__Carrier_Codes_and_Names.html
+_CARRIER_NAMES = {
+    "AA": "American Airlines",
+    "AS": "Alaska Airlines",
+    "B6": "JetBlue",
+    "DL": "Delta Air Lines",
+    "F9": "Frontier Airlines",
+    "HA": "Hawaiian Airlines",
+    "NK": "Spirit Airlines",
+    "UA": "United Airlines",
+    "WN": "Southwest Airlines",
+}
+
+
+def airport_local_time(value: str | None) -> str | None:
+    """Seats.aero flight times are airport-local wall clocks despite the Z suffix.
+
+    Remove the misleading UTC marker without shifting the local date or time.
+    Provider update timestamps are UTC and must not use this normalization.
+    """
+    return value.removesuffix("Z") if value is not None else None
+
+
 class RawGetTripCoordinates(SeatsAeroModel):
     """Represents airport coordinates from the SeatsAero get trip endpoint."""
 
@@ -259,6 +283,8 @@ class RawGetTripSegment(SeatsAeroModel):
     """Represents a flight segment from the SeatsAero get trip endpoint."""
 
     flight_number: str | None = Field(default=None, alias="FlightNumber")
+    carrier: str | None = Field(default=None, alias="Carrier")
+    carrier_name: str | None = Field(default=None, alias="CarrierName")
     origin_airport: str | None = Field(default=None, alias="OriginAirport")
     destination_airport: str | None = Field(default=None, alias="DestinationAirport")
     departs_at_local: str | None = Field(default=None, alias="DepartsAt")
@@ -283,7 +309,7 @@ class RawGetTripFlights(SeatsAeroModel):
     carriers: list[str]
     provider_updated_at: str | None = None
     flight_numbers: list[str]
-    segments: list[RawGetTripSegment]
+    segments: list[RawGetTripSegment] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod
@@ -327,8 +353,29 @@ class RawGetTripFlights(SeatsAeroModel):
 class RawGetTripResponse(SeatsAeroModel):
     """Represents the raw get trip response from the SeatsAero API."""
 
-    trips: list[RawGetTripFlights] = Field(default_factory=list, alias="data")
+    trips: list[RawGetTripFlights] = Field(alias="data")
     booking_links: list[RawGetTripBookingLink] = Field(default_factory=list)
+    carriers: dict[str, str | None] = Field(default_factory=dict)
+
+    def _carrier_name(self, code: str | None) -> str | None:
+        if not code:
+            return None
+        return self.carriers.get(code) or _CARRIER_NAMES.get(code) or code
+
+    def _segment_to_client_json(self, segment: RawGetTripSegment, carriers: list[str]) -> dict:
+        unique_carriers = list(dict.fromkeys(carriers))
+        # A mixed-carrier trip does not identify each segment's carrier. Flight
+        # number prefixes can refer to codeshares, so do not infer one from them.
+        carrier = segment.carrier or (unique_carriers[0] if len(unique_carriers) == 1 else None)
+        return {
+            "flight_number": segment.flight_number,
+            "carrier": carrier,
+            "carrier_name": segment.carrier_name or self._carrier_name(carrier),
+            "origin_airport": segment.origin_airport,
+            "destination_airport": segment.destination_airport,
+            "departs_at_local": airport_local_time(segment.departs_at_local),
+            "arrives_at_local": airport_local_time(segment.arrives_at_local),
+        }
 
     def to_client_json(self) -> dict[str, Any]:
         """Convert the raw get trip response to a client-facing API format."""
@@ -354,21 +401,16 @@ class RawGetTripResponse(SeatsAeroModel):
                     "taxes_minor": trip.taxes_minor,
                     "taxes_currency": trip.taxes_currency,
                     "reported_seats": trip.reported_seats,
-                    "departs_at_local": trip.departs_at_local,
-                    "arrives_at_local": trip.arrives_at_local,
+                    "departs_at_local": airport_local_time(trip.departs_at_local),
+                    "arrives_at_local": airport_local_time(trip.arrives_at_local),
                     "duration_minutes": trip.duration_minutes,
                     "stops": trip.stops,
                     "carriers": trip.carriers,
+                    "carrier_names": [self._carrier_name(code) for code in dict.fromkeys(trip.carriers)],
                     "provider_updated_at": trip.provider_updated_at,
                     "flight_numbers": trip.flight_numbers,
                     "segments": [
-                        {
-                            "flight_number": segment.flight_number,
-                            "origin_airport": segment.origin_airport,
-                            "destination_airport": segment.destination_airport,
-                            "departs_at_local": segment.departs_at_local,
-                            "arrives_at_local": segment.arrives_at_local,
-                        }
+                        self._segment_to_client_json(segment, trip.carriers)
                         for segment in trip.segments
                     ],
                 }

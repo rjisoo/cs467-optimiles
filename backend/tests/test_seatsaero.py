@@ -393,11 +393,14 @@ def test_map_get_trip_raw_response_to_client_json():
                 "duration_minutes": 370,
                 "stops": 0,
                 "carriers": ["UA"],
+                "carrier_names": ["United Airlines"],
                 "provider_updated_at": "2026-10-28T12:00:00Z",
                 "flight_numbers": ["UA123"],
                 "segments": [
                     {
                         "flight_number": "UA123",
+                        "carrier": "UA",
+                        "carrier_name": "United Airlines",
                         "origin_airport": "JFK",
                         "destination_airport": "SEA",
                         "departs_at_local": "2026-10-31T09:00:00",
@@ -455,13 +458,13 @@ def test_single_entry_and_normalizes_trip_fields():
     assert result["trips"][0]["availability_id"] == "avail-demo-1"
     assert result["trips"][0]["taxes_minor"] == 0
     assert result["trips"][0]["taxes_currency"] is None
-    assert result["trips"][0]["departs_at_local"] == "2026-10-31T09:00:00Z"
+    assert result["trips"][0]["departs_at_local"] == "2026-10-31T09:00:00"
     assert result["trips"][0]["carriers"] == ["UA"]
     assert result["trips"][0]["flight_numbers"] == ["UA123"]
     assert result["booking_links"][0]["url"] == "https://example.com/book"
     assert result["trips"][0]["segments"][0]["origin_airport"] == "JFK"
     assert result["trips"][0]["segments"][0]["arrives_at_local"] == (
-        "2026-10-31T12:10:00Z"
+        "2026-10-31T12:10:00"
     )
 
 
