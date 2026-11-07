@@ -3,7 +3,9 @@ import pytest
 import json
 from unittest.mock import AsyncMock, Mock
 
-from backend.ext_api import APIStatusError, SeatsAeroAPI
+from pydantic import ValidationError
+
+from backend.ext_api import APIRouterError, APIStatusError, SeatsAeroAPI
 from backend.ext_api.seatsaero_models import (
     RawCachedSearchResponse,
     RawGetTripResponse,
@@ -211,8 +213,33 @@ def test_parses_and_validates_raw_response():
     assert response.data[0].raw_cabins["economy"].available_raw is True
     assert response.data[0].raw_cabins["economy"].airlines == "TEST-A, TEST-B"
     assert response.data[0].raw_cabins["economy"].airlines_direct == "TEST-A"
-    assert response.data[0].raw_cabins["economy"].from_points == "16000"
+    assert response.data[0].raw_cabins["economy"].from_points == 16000
+    assert isinstance(response.data[0].raw_cabins["economy"].from_points, int)
     assert response.data[0].raw_cabins["economy"].from_points_direct == 16000
+
+
+@pytest.mark.parametrize(
+    ("raw_value", "expected"),
+    [("16000", 16000), (16000, 16000), (16000.5, 16000.5), (None, None)],
+)
+def test_cached_search_normalizes_numeric_mileage(raw_value, expected):
+    payload = json.loads(resp_raw)
+    payload["data"][0]["YMileageCost"] = raw_value
+
+    response = RawCachedSearchResponse.model_validate(payload)
+    points = response.data[0].raw_cabins["economy"].from_points
+
+    assert points == expected
+    assert type(points) is type(expected)
+
+
+@pytest.mark.parametrize("field", ["YMileageCost", "YRemainingSeats"])
+def test_cached_search_rejects_non_numeric_fields(field):
+    payload = json.loads(resp_raw)
+    payload["data"][0][field] = "not-a-number"
+
+    with pytest.raises(ValidationError):
+        RawCachedSearchResponse.model_validate(payload)
 
 
 def test_maps_validated_raw_response_to_client_json():
@@ -449,6 +476,63 @@ def test_empty_get_trips_response_to_client_json():
         "booking_links": [],
         "trips": [],
     }
+
+
+@pytest.fixture
+def raw_trip_payload():
+    return {
+        "data": [{
+            "ID": "trip-1",
+            "AvailabilityID": "availability-1",
+            "Source": "united",
+            "Cabin": "economy",
+            "MileageCost": "15000",
+            "RemainingSeats": "2",
+            "DepartsAt": "2030-01-01T09:00:00",
+            "ArrivesAt": "2030-01-01T12:00:00",
+            "TotalDuration": 180,
+            "Stops": 0,
+            "Carriers": ["UA"],
+            "FlightNumbers": ["UA123"],
+            "AvailabilitySegments": [],
+        }]
+    }
+
+
+@pytest.mark.parametrize(
+    ("raw_points", "expected_points"),
+    [("15000", 15000), (15000, 15000), (15000.5, 15000.5),
+     ("0", 0), (0, 0), (None, None)],
+)
+def test_trip_mileage_numeric_types_and_reward_values(
+    raw_trip_payload, raw_points, expected_points
+):
+    raw_trip_payload["data"][0]["MileageCost"] = raw_points
+
+    response = RawGetTripResponse.model_validate(raw_trip_payload)
+    trip = response.to_client_json()["trips"][0]
+
+    assert type(trip["points"]) is type(expected_points)
+    assert trip["points"] == expected_points
+    assert type(trip["reported_seats"]) is int
+    assert trip["reported_seats"] == 2
+    if expected_points:
+        reward = trip["points_cash_value"]["Amex"]
+        assert type(reward["points"]) is type(expected_points)
+        assert reward["points"] == expected_points
+        assert isinstance(reward["cash_value"], float)
+        assert reward["cash_value"] == expected_points * reward["point_value"]
+    else:
+        assert trip["points_cash_value"] is None
+
+
+@pytest.mark.parametrize("field", ["MileageCost", "RemainingSeats"])
+def test_invalid_trip_numeric_fields_raise_upstream_error(raw_trip_payload, field):
+    raw_trip_payload["data"][0][field] = "not-a-number"
+
+    with pytest.raises(APIRouterError, match="Unexpected SeatsAero response"):
+        SeatsAeroAPI._to_client_json(RawGetTripResponse, raw_trip_payload)
+
 
 def test_validate_availability_on_reward_value():
 
