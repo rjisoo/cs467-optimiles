@@ -5,6 +5,8 @@ on:
   push:
     branches: [main]
 
+concurrency: deploy-production
+
 jobs:
   backend:
     name: Backend tests
@@ -37,3 +39,20 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+      SEATSAERO_TOKEN: ${{ secrets.SEATSAERO_TOKEN }}
+      SEATSAERO_BASE_URL: ${{ vars.SEATSAERO_BASE_URL || 'https://seats.aero/partnerapi' }}
+      DOMAIN: ${{ vars.DOMAIN }}
+      CERTBOT_EMAIL: ${{ vars.CERTBOT_EMAIL }}
+    steps:
+      - uses: actions/checkout@v5
+
+      
