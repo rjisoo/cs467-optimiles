@@ -8,6 +8,7 @@ from google.genai import errors, types
 
 from backend.llm import gemini_chat
 from backend.llm.gemini_chat import (
+    MAX_HISTORY_MESSAGES,
     MAX_TOOL_ROUNDS,
     ROUND_LIMIT_REPLY,
     UNAVAILABLE_REPLY,
@@ -37,10 +38,18 @@ def text_response(text):
 
 
 def tool_response(args, name="search_awards"):
-    call = types.FunctionCall(id="call-1", name=name, args=args)
-    content = types.Content(role="model", parts=[types.Part(function_call=call)])
+    return tool_calls_response(args, name=name)
+
+
+def tool_calls_response(*args_list, name="search_awards"):
+    """One model response that asks for several tool calls at once."""
+    calls = [
+        types.FunctionCall(id=f"call-{index}", name=name, args=args)
+        for index, args in enumerate(args_list, start=1)
+    ]
+    content = types.Content(role="model", parts=[types.Part(function_call=call) for call in calls])
     return SimpleNamespace(
-        function_calls=[call], text=None, candidates=[SimpleNamespace(content=content)]
+        function_calls=calls, text=None, candidates=[SimpleNamespace(content=content)]
     )
 
 
@@ -275,3 +284,107 @@ def test_missing_key_raises_not_configured(monkeypatch):
     except gemini_chat.LLMNotConfigured:
         return
     raise AssertionError("expected LLMNotConfigured")
+
+
+# Follow-ups and refinements. History carries text only, so each follow-up runs a
+# fresh search; the user's earlier messages still ground the quote arguments.
+FIRST_TURN = [
+    ChatMessage(role="user", content=USER_TEXT),
+    ChatMessage(role="assistant", content="ORD to HND, Dec 1, business, 1 passenger: 2 options."),
+]
+
+
+def test_follow_up_changes_the_date_and_sends_history():
+    args = {**SEARCH_ARGS, "departure_date": "2026-12-03", "date_quote": "Dec 3"}
+    client = FakeClient(tool_response(args), text_response("ORD to HND, Dec 3: 2 options."))
+    response = chat(client, "Try Dec 3 instead", FIRST_TURN)
+    assert response.results
+    assert {result.departure_date.isoformat() for result in response.results} == {"2026-12-03"}
+    assert [content.role for content in client.calls[0]] == ["user", "model", "user"]
+
+
+def test_follow_up_changes_the_cabin():
+    args = {**SEARCH_ARGS, "cabin": "economy", "cabin_quote": "economy"}
+    client = FakeClient(tool_response(args), text_response("Economy options."))
+    response = chat(client, "Make it economy", FIRST_TURN)
+    assert {result.cabin for result in response.results} == {"economy"}
+
+
+def test_program_filter_keeps_matching_programs_in_code():
+    args = {**SEARCH_ARGS, "cabin": None, "cabin_quote": "", "programs": ["united"]}
+    payload, results = run_search_tool(args, USER_TEXT)
+    assert {result.program for result in results} == {"United MileagePlus"}
+    assert {result.cabin for result in results} == {"economy", "business"}
+    assert payload["count"] == len(results) == 2
+
+
+def test_points_limit_keeps_cheaper_results():
+    payload, results = run_search_tool({**SEARCH_ARGS, "max_points": 80000}, USER_TEXT)
+    assert [(result.program, result.points_cost) for result in results] == [
+        ("Air Canada Aeroplan", 75000)
+    ]
+    assert payload["count"] == 1
+
+
+def test_filters_that_match_nothing_explain_why():
+    args = {**SEARCH_ARGS, "programs": ["Delta"], "max_points": 50000}
+    payload, results = run_search_tool(args, USER_TEXT)
+    assert results == []
+    assert payload["count"] == 0
+    assert payload["message"] == (
+        "2 award options were found, but none match programs Delta and at most 50000 points."
+    )
+
+
+def test_filters_keep_the_original_no_availability_message():
+    payload, results = run_search_tool({**SEARCH_ARGS, "passengers": 9, "programs": ["United"]}, USER_TEXT)
+    assert results == []
+    assert "no program reports 9 seats" in payload["message"]
+
+
+@pytest.mark.parametrize("bad", [{"max_points": 0}, {"programs": "United"}])
+def test_invalid_filters_are_sent_back_to_model(bad):
+    payload, results = run_search_tool({**SEARCH_ARGS, **bad}, USER_TEXT)
+    assert payload["error"] == "Invalid search criteria"
+    assert results == []
+
+
+def test_two_searches_in_one_turn_are_combined():
+    dec_3 = {**SEARCH_ARGS, "departure_date": "2026-12-03", "date_quote": "Dec 3"}
+    client = FakeClient(tool_calls_response(SEARCH_ARGS, dec_3), text_response("Both dates."))
+    response = chat(client, "Dec 1 or Dec 3?", FIRST_TURN[:1])
+    dates = [result.departure_date.isoformat() for result in response.results]
+    assert dates.count("2026-12-01") == dates.count("2026-12-03") == 2
+    sent = client.calls[1][-1].parts
+    assert [part.function_response.response["count"] for part in sent] == [2, 2]
+
+
+def test_repeated_search_does_not_duplicate_results():
+    client = FakeClient(tool_response(SEARCH_ARGS), tool_response(SEARCH_ARGS), text_response("Done."))
+    response = chat(client)
+    assert response.results == search_awards(CRITERIA).results
+
+
+def test_history_is_trimmed_to_recent_non_blank_messages():
+    history = [
+        ChatMessage(role="user" if index % 2 == 0 else "assistant", content=f"message {index}")
+        for index in range(MAX_HISTORY_MESSAGES + 5)
+    ]
+    history.insert(-2, ChatMessage(role="assistant", content="  "))
+    contents = build_contents(ChatRequest(message="Latest", history=history))
+    texts = [content.parts[0].text for content in contents]
+    assert contents[0].role == "user"
+    assert len(contents) <= MAX_HISTORY_MESSAGES + 1
+    assert "  " not in texts
+    assert texts[-2:] == [f"message {MAX_HISTORY_MESSAGES + 4}", "Latest"]
+
+
+def test_details_only_in_trimmed_history_are_not_used():
+    history = [ChatMessage(role="user", content="From Chicago")] + [
+        ChatMessage(role="assistant" if index % 2 == 0 else "user", content="ok")
+        for index in range(MAX_HISTORY_MESSAGES)
+    ]
+    client = FakeClient(tool_response(SEARCH_ARGS), text_response("Where from?"))
+    response = chat(client, "Business class to Tokyo on Dec 1", history)
+    assert response.results == []
+    assert sent_function_response(client, 1)["missing"] == ["origin"]

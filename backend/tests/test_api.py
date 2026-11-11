@@ -99,6 +99,12 @@ def test_chat_without_api_key_says_not_connected(client, monkeypatch):
     assert response.get_json() == {"reply": NOT_CONFIGURED_REPLY, "results": []}
 
 
+def test_chat_rejects_overlong_message(client):
+    response = client.post("/api/chat", json={"message": "x" * 2001})
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "Invalid request"
+
+
 def test_chat_rejects_empty_message(client):
     response = client.post("/api/chat", json={"message": ""})
     assert response.status_code == 400
