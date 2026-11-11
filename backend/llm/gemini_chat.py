@@ -13,13 +13,15 @@ from google import genai
 from google.genai import errors, types
 
 from backend.llm.tools import SEARCH_AWARDS, SEARCH_AWARDS_DECLARATION, run_search_tool
-from backend.models import ChatRequest, ChatResponse, Result
+from backend.models import ChatMessage, ChatRequest, ChatResponse, Result
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "gemini-3.5-flash-lite"
 # Each round is one model call; caps how much quota a tool-call loop can use.
 MAX_TOOL_ROUNDS = 3
+# Only the most recent history is sent, so a long chat doesn't grow every request.
+MAX_HISTORY_MESSAGES = 20
 
 ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 
@@ -50,6 +52,12 @@ Rules:
 - If cash_fees_usd or seats_available is null, say that it wasn't reported; don't guess.
 - If the tool returns no results, say plainly that no availability was found, using its message.
 - If the tool returns an error, explain what needs fixing and ask the user.
+- Follow-ups: when the user changes one detail (date, cabin, passengers), search again and reuse
+  the other details from earlier in the conversation. To compare dates, search each date.
+- To narrow results to certain programs or a points limit, search again with programs or
+  max_points. Never filter or compare results yourself.
+- When you report results, first state what was searched (route, date, cabin or "all cabins",
+  passengers) so later messages can refer back to it.
 - Keep replies short and friendly; the user may be new to points programs."""
 
 
@@ -70,14 +78,23 @@ def get_model() -> str:
     return os.getenv("GEMINI_MODEL") or DEFAULT_MODEL
 
 
+def recent_history(request: ChatRequest) -> list[ChatMessage]:
+    """The last MAX_HISTORY_MESSAGES non-blank messages, starting with a user message."""
+    history = [message for message in request.history if message.content.strip()]
+    history = history[-MAX_HISTORY_MESSAGES:]
+    while history and history[0].role != "user":
+        history = history[1:]
+    return history
+
+
 def build_contents(request: ChatRequest) -> list[types.Content]:
-    """Convert API chat history plus the new message into Gemini contents."""
+    """Convert recent chat history plus the new message into Gemini contents."""
     contents = [
         types.Content(
             role="model" if message.role == "assistant" else "user",
             parts=[types.Part(text=message.content)],
         )
-        for message in request.history
+        for message in recent_history(request)
     ]
     contents.append(types.Content(role="user", parts=[types.Part(text=request.message)]))
     return contents
@@ -111,8 +128,7 @@ def run_chat(
             response_parts = []
             for call in calls:
                 payload, call_results = _run_tool(call, user_text)
-                if call_results:
-                    results = call_results
+                results = merge_results(results, call_results)
                 response_parts.append(
                     types.Part(
                         function_response=types.FunctionResponse(
@@ -131,8 +147,23 @@ def run_chat(
 
 def user_messages_text(request: ChatRequest) -> str:
     """Everything the user (not the assistant) has written in this chat."""
-    said = [message.content for message in request.history if message.role == "user"]
+    said = [message.content for message in recent_history(request) if message.role == "user"]
     return "\n".join([*said, request.message])
+
+
+def merge_results(earlier: list[Result], new: list[Result]) -> list[Result]:
+    """Combine results from every search in one turn (e.g. comparing two dates).
+
+    Each request starts empty, so a follow-up's results replace the previous
+    turn's. Exact duplicates from repeated searches are dropped."""
+    seen = {result.model_dump_json() for result in earlier}
+    merged = list(earlier)
+    for result in new:
+        key = result.model_dump_json()
+        if key not in seen:
+            seen.add(key)
+            merged.append(result)
+    return merged
 
 
 def _run_tool(call: types.FunctionCall, user_text: str) -> tuple[dict, list[Result]]:

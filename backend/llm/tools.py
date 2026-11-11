@@ -7,10 +7,10 @@ import json
 import logging
 from typing import get_args
 
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from backend.errors import UPSTREAM_ERRORS, describe_upstream_error
-from backend.models import Cabin, Result, SearchCriteria
+from backend.models import Cabin, Result, SearchCriteria, SearchResponse
 from backend.search import search_awards
 
 logger = logging.getLogger(__name__)
@@ -30,6 +30,37 @@ _QUOTE_DESCRIPTION = (
     "(e.g. {example}). Empty string if the user never said it."
 )
 _QUOTE_STRIP = " \t\n\"'.,;:!?"
+
+# Refinement arguments. They only narrow results the search already returned, so
+# code does the filtering and the model never compares numbers itself.
+FILTER_ARGS = ("programs", "max_points")
+
+
+class ResultFilters(BaseModel):
+    programs: list[str] = Field(default=[], description="Keep programs whose name contains one of these")
+    max_points: int | None = Field(default=None, ge=1, description="Keep results costing at most this many points")
+
+    @field_validator("programs")
+    @classmethod
+    def drop_blank_programs(cls, names: list[str]) -> list[str]:
+        return [name.strip() for name in names if name.strip()]
+
+    def apply(self, results: list[Result]) -> list[Result]:
+        wanted = [_normalize(name) for name in self.programs]
+        return [
+            result for result in results
+            if (not wanted or any(name in _normalize(result.program) for name in wanted))
+            and (self.max_points is None or result.points_cost <= self.max_points)
+        ]
+
+    def describe(self) -> str:
+        parts = []
+        if self.programs:
+            parts.append("programs " + ", ".join(self.programs))
+        if self.max_points is not None:
+            parts.append(f"at most {self.max_points} points")
+        return " and ".join(parts)
+
 
 SEARCH_AWARDS_DECLARATION = {
     "name": SEARCH_AWARDS,
@@ -56,6 +87,16 @@ SEARCH_AWARDS_DECLARATION = {
                 ),
             },
             "passengers": {"type": "integer", "minimum": 1, "maximum": 9},
+            "programs": {
+                "type": "array", "items": {"type": "string"},
+                "description": "Only set when the user asks for specific loyalty programs or "
+                "airlines' programs, e.g. [\"United\"]. Omit to include every program.",
+            },
+            "max_points": {
+                "type": "integer", "minimum": 1,
+                "description": "Only set when the user gives a points limit, e.g. 60000 for "
+                "\"under 60k points\". Omit for no limit.",
+            },
             "origin_quote": {
                 "type": "string",
                 "description": _QUOTE_DESCRIPTION.format(detail="origin", example='"Chicago"'),
@@ -115,12 +156,14 @@ def run_search_tool(args: dict, user_text: str) -> tuple[dict, list[Result]]:
             ),
         }, []
 
-    search_args = {key: value for key, value in args.items() if key not in QUOTE_ARGS and key != "cabin_quote"}
+    skip = {*QUOTE_ARGS, "cabin_quote", *FILTER_ARGS}
+    search_args = {key: value for key, value in args.items() if key not in skip}
     cabin_quote = _normalize(str(args.get("cabin_quote") or "")).strip(_QUOTE_STRIP)
     if not cabin_quote or cabin_quote not in _normalize(user_text):
         search_args["cabin"] = None
     try:
         criteria = SearchCriteria.model_validate(search_args)
+        filters = ResultFilters.model_validate({key: args[key] for key in FILTER_ARGS if key in args})
     except ValidationError as error:
         details = json.loads(error.json(include_url=False, include_input=False))
         return {"error": "Invalid search criteria", "details": details}, []
@@ -130,6 +173,7 @@ def run_search_tool(args: dict, user_text: str) -> tuple[dict, list[Result]]:
     except UPSTREAM_ERRORS as error:
         logger.warning("Award search failed", exc_info=error)
         return {"error": describe_upstream_error(error)[1]}, []
+    response = _filter_response(response, filters)
     payload: dict = {
         "count": len(response.results),
         "results": [result.model_dump(mode="json") for result in response.results],
@@ -137,3 +181,16 @@ def run_search_tool(args: dict, user_text: str) -> tuple[dict, list[Result]]:
     if response.message:
         payload["message"] = response.message
     return payload, response.results
+
+
+def _filter_response(response: SearchResponse, filters: ResultFilters) -> SearchResponse:
+    """Apply the user's refinements; explain when they remove every result."""
+    if not response.results or not filters.describe():
+        return response
+    kept = filters.apply(response.results)
+    if kept:
+        return SearchResponse(results=kept)
+    return SearchResponse(results=[], message=(
+        f"{len(response.results)} award options were found, but none match "
+        f"{filters.describe()}."
+    ))

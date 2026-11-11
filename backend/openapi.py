@@ -206,12 +206,17 @@ def build_openapi(server_url: str = "/") -> dict:
                 "post": _post_operation(
                     "Chat about award flights",
                     "Uses Gemini when a server-side API key is configured. Without a key, "
-                    "returns a message that chat is not connected yet.",
+                    "returns a message that chat is not connected yet. Send earlier messages "
+                    "in history for follow-ups such as a new date, cabin, program or points "
+                    "limit; results come from the searches in this request only.",
                     refs[ChatRequest, "validation"],
                     refs[ChatResponse, "serialization"],
                     {
-                        "message": "Business class from SFO to Tokyo on December 1, 2026",
-                        "history": [],
+                        "message": "Try December 3 instead, United only",
+                        "history": [
+                            {"role": "user", "content": "Business class from SFO to Tokyo on December 1, 2026"},
+                            {"role": "assistant", "content": "SFO to HND, Dec 1, business, 1 passenger: 2 options found."},
+                        ],
                     },
                 )
             },
