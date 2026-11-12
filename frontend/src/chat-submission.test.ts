@@ -38,22 +38,25 @@ it.each(['not JSON', JSON.stringify({ reply: 'Incomplete response' })])('reports
   expect(result.current.turns[0].response).toBeUndefined()
 })
 
-it('sends each exact form date through chat without the old route/date restriction', async () => {
-  vi.mocked(fetch).mockImplementation(async () => Response.json({ reply: 'Searching requested date', results: [] }))
+it('sends exact form criteria only through search and preserves every selected cabin', async () => {
+  vi.mocked(fetch).mockImplementation(async () => Response.json({ message: 'No matching cached awards', results: [] }))
   const { result } = renderHook(useChatJourney)
   act(() => result.current.setDraft({
     message: 'Keep my unsent message', origin: ' lax ', destination: ' jfk ',
-    departureDate: '2026-12-01', adults: '2', cabins: ['Economy', 'Business'],
+    departureDate: '2026-12-01', adults: '2', cabins: ['Economy', 'Premium economy', 'Business', 'First'],
   }))
   await act(async () => result.current.submit('form'))
   expect(vi.mocked(fetch).mock.calls[0][1]?.body).toBe(JSON.stringify({
-    message: 'LAX to JFK, 2026-12-01, one way, 2 adults. Compare Economy, Business.',
+    origin: 'LAX', destination: 'JFK', departure_date: '2026-12-01', passengers: 2,
+    cabins: ['economy', 'premium_economy', 'business', 'first'],
   }))
   act(() => result.current.setDraft((draft) => ({ ...draft, departureDate: '2026-12-02' })))
   await act(async () => result.current.submit('form'))
   expect(vi.mocked(fetch).mock.calls[1][1]?.body).toBe(JSON.stringify({
-    message: 'LAX to JFK, 2026-12-02, one way, 2 adults. Compare Economy, Business.',
+    origin: 'LAX', destination: 'JFK', departure_date: '2026-12-02', passengers: 2,
+    cabins: ['economy', 'premium_economy', 'business', 'first'],
   }))
   expect(result.current.turns.map((turn) => turn.status)).toEqual(['success', 'success'])
   expect(result.current.draft.message).toBe('Keep my unsent message')
+  expect(vi.mocked(fetch).mock.calls.map(([url]) => url)).toEqual(['/api/search', '/api/search'])
 })

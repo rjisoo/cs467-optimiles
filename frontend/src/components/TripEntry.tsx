@@ -53,7 +53,8 @@ function TripEntry({
   function errorProps(field: TripField) {
     return {
       'aria-invalid': !!fieldErrors[field],
-      'aria-describedby': fieldErrors[field] ? `${field}-error` : undefined,
+      'aria-describedby': fieldErrors[field] ? `${field}-error`
+        : field === 'origin' || field === 'destination' ? 'airport-code-help' : undefined,
     }
   }
 
@@ -229,6 +230,7 @@ function TripEntry({
               Enter trip details
             </h2>
             <p id="form-modes">One-way, exact dates for now. Round-trip and flexible dates come later.</p>
+            <p id="airport-code-help">Enter three-letter airport codes (JFK, SEA). Airport lookup comes later.</p>
             <p role="status" className="visually-hidden">
               {Object.keys(fieldErrors).length ? 'Check the highlighted trip fields.' : ''}
             </p>
@@ -238,7 +240,7 @@ function TripEntry({
                 <Input
                   id="origin"
                   type="text"
-                  placeholder="City or airport code"
+                  placeholder="Airport code, e.g. JFK"
                   value={draft.origin}
                   {...errorProps('origin')}
                   onChange={(event) => onDraftChange({ ...draft, origin: event.target.value })}
@@ -250,7 +252,7 @@ function TripEntry({
                 <Input
                   id="destination"
                   type="text"
-                  placeholder="City or airport code"
+                  placeholder="Airport code, e.g. SEA"
                   value={draft.destination}
                   {...errorProps('destination')}
                   onChange={(event) => onDraftChange({ ...draft, destination: event.target.value })}

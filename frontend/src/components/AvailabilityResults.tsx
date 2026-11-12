@@ -1,5 +1,6 @@
 import { Fragment, useId, useRef, useState, type ReactNode } from 'react'
 import type { ChatCabin, ChatResponse } from '../services/chat-response'
+import type { SearchResponse } from '../services/search-api'
 import { cabinOptions, groupSummaries, sortSummaries, type SummarySort } from '../services/availability-presentation'
 import { awardDateLabel } from '../lib/trip-date'
 import AvailabilitySummaryRow from './AvailabilitySummaryRow'
@@ -10,7 +11,7 @@ import useTripDetails from '../useTripDetails'
 
 type Props = {
   searchId: string | number
-  response: ChatResponse
+  response: ChatResponse | SearchResponse
   message?: ReactNode
 }
 
