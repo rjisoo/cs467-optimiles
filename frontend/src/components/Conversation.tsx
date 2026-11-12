@@ -88,10 +88,15 @@ export default function Conversation({ turns, lastActionId, pending, onRetry }: 
       >
         {turns.map((turn) => {
           const canRetry = turn.status === 'failed' || turn.status === 'canceled'
+          const message = turn.response && ('reply' in turn.response ? turn.response.reply : turn.response.message)
 
           return (
             <section key={turn.id} className="conversation-turn" aria-label={`Search ${turn.id}`}>
               <p className="conversation-request">{turn.request}</p>
+              {turn.source === 'form' && <p className="availability-list-note">
+                Searches cached availability from Seats.aero; only the first provider page is checked.
+                Results may be incomplete. No results does not mean no awards exist.
+              </p>}
               <div className="conversation-assistant">
                 <span><Icon name="aircraft" /></span>
                 <strong>OptiMiles</strong>
@@ -100,7 +105,8 @@ export default function Conversation({ turns, lastActionId, pending, onRetry }: 
                 <AvailabilityResults
                   searchId={turn.id}
                   response={turn.response}
-                  message={turn.response.reply ? <MarkdownMessage>{turn.response.reply}</MarkdownMessage> : undefined}
+                  message={message ? (turn.source === 'chat'
+                    ? <MarkdownMessage>{message}</MarkdownMessage> : <p>{message}</p>) : undefined}
                 />
               ) : (
                 <div className="conversation-response">
