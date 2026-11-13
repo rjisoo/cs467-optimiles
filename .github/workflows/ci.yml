@@ -3,9 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
-
-concurrency: deploy-production
+    branches: [main, feat/deployment_script]
 
 jobs:
   backend:
@@ -39,9 +37,13 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      
   deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [backend, frontend]
     runs-on: ubuntu-latest
     environment: production
+    concurrency: deploy-production
     permissions:
       contents: read
       id-token: write
@@ -55,4 +57,58 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26.7.0
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Generate application environment
+        run: |
+          : "${GEMINI_API_KEY:?GEMINI_API_KEY secret is not set}"
+          : "${SEATSAERO_TOKEN:?SEATSAERO_TOKEN secret is not set}"
+          umask 077
+          {
+            printf 'GEMINI_API_KEY=%s\n' "$GEMINI_API_KEY"
+            printf 'GEMINI_MODEL=%s\n' "$GEMINI_MODEL"
+            printf 'SEATSAERO_TOKEN=%s\n' "$SEATSAERO_TOKEN"
+            printf 'SEATSAERO_BASE_URL=%s\n' "$SEATSAERO_BASE_URL"
+          } > .env
+
+      - name: Package release
+        run: |
+          tar czf release.tgz \
+            --exclude='backend/.venv' --exclude='backend/.env' --exclude='backend/tests' \
+            --exclude='backend/logs' --exclude='__pycache__' \
+            backend frontend/dist deploy .env
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Upload and launch (via IAP tunnel)
+        env:
+          INSTANCE: ${{ secrets.GCP_INSTANCE }}
+          GCLOUD_OPTS: --project=${{ secrets.GCP_PROJECT }} --zone=${{ secrets.GCP_ZONE }} --tunnel-through-iap --quiet
+        run: |
+          printf -v remote_domain '%q' "$DOMAIN"
+          printf -v remote_email '%q' "$CERTBOT_EMAIL"
+          remote_dir="/tmp/optimiles-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          gcloud compute ssh "$INSTANCE" $GCLOUD_OPTS --command "umask 077; mkdir -m 700 '$remote_dir'"
+          cleanup() {
+            gcloud compute ssh "$INSTANCE" $GCLOUD_OPTS --command "rm -rf -- '$remote_dir'"
+          }
+          trap cleanup EXIT
+          gcloud compute scp $GCLOUD_OPTS release.tgz "$INSTANCE:$remote_dir/release.tgz"
+          gcloud compute ssh "$INSTANCE" $GCLOUD_OPTS --command "set -e
+            tar xzf '$remote_dir/release.tgz' -C '$remote_dir'
+            cd '$remote_dir'
+            sudo DOMAIN=${remote_domain} CERTBOT_EMAIL=${remote_email} bash deploy/launch.sh"
