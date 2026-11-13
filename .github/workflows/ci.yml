@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, feat/deployment_script]
+    branches: [main, test/deployment]
 
 jobs:
   backend:
@@ -37,7 +37,24 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
-      
+
+  testgcloud:
+    name: Test Google Cloud SSH Connection
+    runs-on: ubuntu-latest
+    env:
+      INSTANCE: ${{ secrets.GCP_INSTANCE }}
+      PROJECT: ${{ secrets.GCP_PROJECT }}
+      ZONE: ${{ secrets.GCP_ZONE }}
+    steps:
+      - name: Test GCloud SSH
+        run: |
+          gcloud compute ssh "$INSTANCE" \
+            --project="$PROJECT" \
+            --zone="$ZONE" \
+            --tunnel-through-iap \
+            --quiet \
+            --command="hostname"
+
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [backend, frontend]
