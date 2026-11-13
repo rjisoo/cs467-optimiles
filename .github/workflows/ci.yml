@@ -51,6 +51,7 @@ jobs:
       PROJECT: ${{ secrets.GCP_PROJECT }}
       ZONE: ${{ secrets.GCP_ZONE }}
     steps:
+      - uses: actions/checkout@v5
       - uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
