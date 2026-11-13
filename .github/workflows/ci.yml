@@ -40,12 +40,24 @@ jobs:
 
   testgcloud:
     name: Test Google Cloud SSH Connection
+    if: github.event_name == 'push' && github.ref == 'refs/heads/test/deployment'
     runs-on: ubuntu-latest
+    environment: gcp-test
+    permissions:
+      contents: read
+      id-token: write
     env:
       INSTANCE: ${{ secrets.GCP_INSTANCE }}
       PROJECT: ${{ secrets.GCP_PROJECT }}
       ZONE: ${{ secrets.GCP_ZONE }}
     steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
       - name: Test GCloud SSH
         run: |
           gcloud compute ssh "$INSTANCE" \
