@@ -86,7 +86,16 @@ The origin, destination and departure date must come from the user. Along with e
 model sends the user's own words for them (`origin_quote`, `destination_quote`, `date_quote`);
 `llm/tools.py` checks each quote appears in the user's messages (current message plus history).
 If one is missing, no search runs and the model is told to ask, so it can't fill in today's date
-or a default city. Cabin and passengers may default (economy, 1).
+or a default city. Without a requested cabin every cabin is searched; passengers default to 1.
+
+Follow-ups work through `history` (earlier messages, oldest first; only the last 20 non-blank
+ones are used, `MAX_HISTORY_MESSAGES`). History is text only, so a follow-up such as "try Dec 3
+instead" or "make it economy" runs a new search, and the model is told to state what it searched
+so later turns can refer back. "Only United" or "under 60k points" become the tool's optional
+`programs` / `max_points` arguments, which code applies to the results; if they remove everything,
+the tool says how many options the filters excluded. `results` holds every search from the
+current request (e.g. two dates compared), with exact duplicates removed; it does not carry over
+results from earlier turns.
 
 1. Create an API key in Google AI Studio (https://aistudio.google.com/apikey).
 2. Put it in `backend\.env` as `GEMINI_API_KEY=...`. Optionally set `GEMINI_MODEL` to override

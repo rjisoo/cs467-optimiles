@@ -197,8 +197,11 @@ class ChatMessage(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    message: str = Field(min_length=1)
-    history: list[ChatMessage] = []
+    message: str = Field(min_length=1, max_length=2000)
+    history: list[ChatMessage] = Field(
+        default=[],
+        description="Earlier messages, oldest first. Only the last 20 non-blank ones are used.",
+    )
 
 
 class ChatResponse(BaseModel):
