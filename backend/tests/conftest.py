@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import datetime, timezone
 
 import pytest
 
@@ -75,6 +76,11 @@ def seats_aero_row_fixture():
 @pytest.fixture(autouse=True)
 def fake_seats_aero(monkeypatch):
     monkeypatch.setattr(search, "_fetch_availability", fake_availability)
+
+
+@pytest.fixture(autouse=True)
+def fixed_search_clock(monkeypatch):
+    monkeypatch.setattr("backend.airports.utc_now", lambda: datetime(2026, 11, 1, 12, tzinfo=timezone.utc))
 
 
 @pytest.fixture

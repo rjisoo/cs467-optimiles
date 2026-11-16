@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { mockAirportCatalog } from './test-airports'
 
 const offer = {
   airline: 'AA, AS', cabin: 'economy', cash_fees_usd: 11.2, cents_per_point: null,
@@ -116,12 +117,18 @@ describe('chat conversation controls', () => {
   })
 
   it.each(['chat', 'form'])('reaches returned results through %s and prevents competing submissions', async (source) => {
+    if (source === 'form') mockAirportCatalog()
     const request = pendingRequest()
     render(<App />)
     if (source === 'chat') send('JFK to SEA December 1', true)
     else {
-      fireEvent.change(screen.getByRole('textbox', { name: 'From' }), { target: { value: 'JFK' } })
-      fireEvent.change(screen.getByRole('textbox', { name: 'To' }), { target: { value: 'SEA' } })
+      const origin = screen.getByRole('combobox', { name: 'From' })
+      await act(async () => origin.focus())
+      vi.mocked(fetch).mockClear()
+      fireEvent.change(origin, { target: { value: 'JFK' } })
+      fireEvent.keyDown(origin, { key: 'Enter' })
+      fireEvent.change(screen.getByRole('combobox', { name: 'To' }), { target: { value: 'SEA' } })
+      fireEvent.keyDown(screen.getByRole('combobox', { name: 'To' }), { key: 'Enter' })
       fireEvent.change(screen.getByLabelText('Departure date'), { target: { value: '2026-12-01' } })
       fireEvent.change(screen.getByRole('combobox', { name: 'Adults' }), { target: { value: '2' } })
       fireEvent.click(screen.getByRole('checkbox', { name: 'Economy' }))

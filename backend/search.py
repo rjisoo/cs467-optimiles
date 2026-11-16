@@ -4,6 +4,7 @@ search_awards() is the single entry point for both /api/search and the chat tool
 
 import logging
 import os
+import re
 
 from pydantic import ValidationError
 
@@ -82,7 +83,7 @@ def search_awards(criteria: SearchCriteria) -> SearchResponse:
         logger.info("seats.aero returned more pages; only the first is used")
     rows = response.get("data") or []
     results = []
-    cabins = (criteria.cabin,) if criteria.cabin is not None else tuple(_CABIN_PREFIX)
+    cabins = criteria.cabins or ((criteria.cabin,) if criteria.cabin is not None else tuple(_CABIN_PREFIX))
     for row in rows:
         for cabin in cabins:
             result = _to_result(row, criteria, cabin)
@@ -95,9 +96,12 @@ def search_awards(criteria: SearchCriteria) -> SearchResponse:
 
 def _empty_message(rows: list[dict], criteria: SearchCriteria) -> str:
     """Say why nothing matched: too few seats, wrong cabin, or no availability at all."""
-    trip = f"from {criteria.origin} to {criteria.destination} on {criteria.departure_date}"
-    cabin_name = criteria.cabin.replace("_", " ") if criteria.cabin is not None else None
-    cabins = (criteria.cabin,) if criteria.cabin is not None else tuple(_CABIN_PREFIX)
+    trip = f"from {', '.join(criteria.origin_codes)} to {', '.join(criteria.destination_codes)} on {criteria.departure_date}"
+    cabins = criteria.cabins or ((criteria.cabin,) if criteria.cabin is not None else tuple(_CABIN_PREFIX))
+    cabin_name = (
+        " or ".join(cabin.replace("_", " ") for cabin in cabins)
+        if criteria.cabins is not None or criteria.cabin is not None else None
+    )
     one_seat = criteria.model_copy(update={"passengers": 1})
     if any(_to_result(row, one_seat, cabin) for row in rows for cabin in cabins):
         seat_label = f"{cabin_name.capitalize()} award seats" if cabin_name else "Award seats"
@@ -107,7 +111,7 @@ def _empty_message(rows: list[dict], criteria: SearchCriteria) -> str:
         )
     if cabin_name and any(
         _to_result(row, one_seat, cabin)
-        for row in rows for cabin in _CABIN_PREFIX if cabin != criteria.cabin
+        for row in rows for cabin in _CABIN_PREFIX if cabin not in cabins
     ):
         return f"No {cabin_name} award seats {trip}. Other cabins have availability."
     return f"No award availability found {trip}."
@@ -120,8 +124,8 @@ def _fetch_availability(criteria: SearchCriteria) -> dict:
     day = criteria.departure_date.isoformat()
     return seatsaero_api.cached_search(
         {
-            "origin_airport": criteria.origin,
-            "destination_airport": criteria.destination,
+            "origin_airport": ",".join(criteria.origin_codes),
+            "destination_airport": ",".join(criteria.destination_codes),
             "start_date": day,
             "end_date": day,
         }
@@ -144,15 +148,31 @@ def _to_result(row: dict, criteria: SearchCriteria, cabin: Cabin) -> Result | No
     if seats is not None and seats < criteria.passengers:
         return None
 
-    route = row.get("Route") or {}
+    route = row.get("Route")
+    if route is None:
+        route = {}
+    if not isinstance(route, dict):
+        raise APIRouterError("Invalid route returned by the provider")
+    origins, destinations = criteria.origin_codes, criteria.destination_codes
+    origin, destination = route.get("OriginAirport"), route.get("DestinationAirport")
+    if origin is None or origin == "":
+        origin = origins[0] if len(origins) == 1 else None
+    if destination is None or destination == "":
+        destination = destinations[0] if len(destinations) == 1 else None
+    if (not isinstance(origin, str) or not re.fullmatch(r"[A-Z]{3}", origin)
+            or not isinstance(destination, str) or not re.fullmatch(r"[A-Z]{3}", destination)):
+        raise APIRouterError("Missing or invalid route returned by the provider")
+    departure = row.get("Date") or criteria.departure_date
+    if origin not in origins or destination not in destinations or str(departure) != str(criteria.departure_date):
+        return None
     source = row.get("Source") or route.get("Source") or ""
     return Result(
         availability_id=row.get("ID") if isinstance(row.get("ID"), str) else None,
         program=_PROGRAM_NAMES.get(source, source),
         airline=row.get(f"{prefix}Airlines") or "Not reported",
-        origin=route.get("OriginAirport") or criteria.origin,
-        destination=route.get("DestinationAirport") or criteria.destination,
-        departure_date=row.get("Date") or criteria.departure_date,
+        origin=origin,
+        destination=destination,
+        departure_date=departure,
         cabin=cabin,
         points_cost=points_cost,
         cash_fees_usd=_fees_usd(row, prefix),

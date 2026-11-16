@@ -156,8 +156,8 @@ def run_search_tool(args: dict, user_text: str) -> tuple[dict, list[Result]]:
             ),
         }, []
 
-    skip = {*QUOTE_ARGS, "cabin_quote", *FILTER_ARGS}
-    search_args = {key: value for key, value in args.items() if key not in skip}
+    search_args = {key: value for key, value in args.items() if key not in QUOTE_ARGS and key != "cabin_quote"}
+    search_args.pop("cabins", None)  # The chat tool declares only the grounded singular cabin.
     cabin_quote = _normalize(str(args.get("cabin_quote") or "")).strip(_QUOTE_STRIP)
     if not cabin_quote or cabin_quote not in _normalize(user_text):
         search_args["cabin"] = None

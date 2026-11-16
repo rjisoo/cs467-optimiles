@@ -61,6 +61,33 @@ def test_search_explains_empty_results(client):
     assert body["message"].startswith("No first award seats")
 
 
+def test_structured_search_preserves_cabins_without_chat_or_gemini(client, monkeypatch):
+    chat = Mock(side_effect=AssertionError("Search must not call chat"))
+    gemini = Mock(side_effect=AssertionError("Search must not call Gemini"))
+    monkeypatch.setattr("backend.app.handle_chat", chat)
+    monkeypatch.setattr("backend.llm.gemini_chat.get_client", gemini)
+    request = {key: value for key, value in VALID_SEARCH.items() if key != "cabin"}
+    response = client.post("/api/search", json={**request, "cabins": ["economy", "business"]})
+    assert response.status_code == 200
+    results = response.get_json()["results"]
+    assert {result["cabin"] for result in results} == {"economy", "business"}
+    assert all(result["availability_id"] for result in results)
+    chat.assert_not_called()
+    gemini.assert_not_called()
+
+
+@pytest.mark.parametrize("fields", [
+    {"cabins": []}, {"cabins": ["economy", "economy"]}, {"cabins": ["premium"]},
+    {"cabins": "business"}, {"cabins": [1]},
+    {"cabin": "business", "cabins": ["economy"]},
+])
+def test_search_rejects_invalid_cabin_selections(client, fields):
+    request = {key: value for key, value in VALID_SEARCH.items() if key != "cabin"}
+    response = client.post("/api/search", json={**request, **fields})
+    assert response.status_code == 400
+    assert response.get_json()["error"] == "Invalid request"
+
+
 def test_search_rejects_same_origin_and_destination(client):
     response = client.post("/api/search", json={**VALID_SEARCH, "destination": "SFO"})
     assert response.status_code == 400

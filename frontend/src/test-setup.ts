@@ -1,8 +1,12 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
 import { afterEach, beforeEach, vi } from 'vitest'
+import { resetAirportCatalogCache } from './services/airports'
 
 beforeEach(() => {
+  resetAirportCatalogCache()
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2026-11-11T12:00:00Z'))
   vi.stubGlobal('fetch', vi.fn((url: string) => Promise.reject(new Error(`Unexpected request: ${url}`))))
 
   // JSDOM does not evaluate media queries. Tests default to desktop navigation.
@@ -27,5 +31,6 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })

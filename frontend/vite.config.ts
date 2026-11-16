@@ -13,6 +13,7 @@ export default defineConfig({
       // Keep browser requests on the Vite origin without changing backend CORS.
       '^/api/chat$': 'http://127.0.0.1:5000',
       '^/api/search$': 'http://127.0.0.1:5000',
+      '^/api/airports$': 'http://127.0.0.1:5000',
       '^/api/availability/[A-Za-z0-9_-]+/trips$': 'http://127.0.0.1:5000',
     },
   },

@@ -1,43 +1,76 @@
 import type { TripDraft } from '../components/TripEntry'
-import { isExactDate } from './trip-date'
+import { departureDateBounds, isExactDate, validateDepartureDate } from './trip-date'
+import type { Airport } from '../services/airports'
 
 export const cabinChoices = ['Economy', 'Premium economy', 'Business', 'First']
-export type TripField = Exclude<keyof TripDraft, 'message'>
+export type TripField = Exclude<keyof TripDraft, 'message' | 'originCodes' | 'destinationCodes'>
 export type TripFieldErrors = Partial<Record<TripField, string>>
 
-// Structural checks only; airport identity, timezone and provider support still need reference data.
-export function validateTripFields(draft: TripDraft): TripFieldErrors {
-  const errors: TripFieldErrors = {}
-  const origin = draft.origin.trim().toUpperCase()
-  const destination = draft.destination.trim().toUpperCase()
+export function resolveTripAirports(draft: TripDraft, field: 'origin' | 'destination', airports: readonly Airport[]): Airport[] {
+  const codes = draft[`${field}Codes`]
+  if (!Array.isArray(codes)) return []
+  return codes.flatMap((code) => {
+    const normalized = typeof code === 'string' ? code.trim().toUpperCase() : ''
+    const airport = /^[A-Z]{3}$/.test(normalized) && airports.find((item) => item.code === normalized)
+    return airport ? [airport] : []
+  })
+}
 
-  if (!origin) {
-    errors.origin = 'Enter a departure airport.'
-  } else if (!/^[A-Z]{3}$/.test(origin)) {
-    errors.origin = 'Enter a three-letter airport code, such as JFK.'
+export function tripDepartureBounds(draft: TripDraft, airports: readonly Airport[], now = new Date()) {
+  let bounds: { min: string; max: string } | undefined
+  for (const origin of resolveTripAirports(draft, 'origin', airports)) {
+    const current = departureDateBounds(origin.timeZone, now)
+    if (typeof current === 'string') return current
+    bounds = bounds ? { min: current.min > bounds.min ? current.min : bounds.min,
+      max: current.max < bounds.max ? current.max : bounds.max } : current
   }
+  return bounds
+}
 
-  if (!destination) {
-    errors.destination = 'Enter an arrival airport.'
-  } else if (!/^[A-Z]{3}$/.test(destination)) {
-    errors.destination = 'Enter a three-letter airport code, such as SEA.'
-  } else if (origin === destination) {
-    errors.destination = 'Choose a different arrival airport.'
+export function validateTripFields(draft: TripDraft, airports?: readonly Airport[], now = new Date()): TripFieldErrors {
+  const errors: TripFieldErrors = {}
+  const origins = resolveTripAirports(draft, 'origin', airports ?? [])
+  const destinations = resolveTripAirports(draft, 'destination', airports ?? [])
+  for (const field of ['origin', 'destination'] as const) {
+    const label = field === 'origin' ? 'departure' : 'arrival'
+    const airportLabel = field === 'origin' ? 'a departure airport' : 'an arrival airport'
+    const selected = field === 'origin' ? origins : destinations
+    const codes = draft[`${field}Codes`]
+    if (!Array.isArray(codes) || !codes.length) {
+      errors[field] = `Choose at least one ${label} airport.`
+    } else if (!airports) {
+      errors[field] = 'Load the airport list before searching.'
+    } else if (codes.length > 6) {
+      errors[field] = `Choose up to six ${label} airports.`
+    } else if (selected.length !== codes.length) {
+      errors[field] = `Choose ${airportLabel} from the suggestions or enter its exact code.`
+    } else if (new Set(selected.map((airport) => airport.code)).size !== selected.length) {
+      errors[field] = `Choose each ${label} airport only once.`
+    }
+  }
+  if (!errors.origin && !errors.destination && origins.some((origin) => destinations.some((destination) => origin.code === destination.code))) {
+    errors.destination = 'Departure and arrival airports must not overlap.'
   }
 
   if (!draft.departureDate) {
     errors.departureDate = 'Enter a departure date.'
   } else if (!isExactDate(draft.departureDate)) {
     errors.departureDate = 'Enter a valid date including the year.'
+  } else if (!errors.origin) {
+    for (const origin of origins) {
+      const error = validateDepartureDate(draft.departureDate, origin.timeZone, now)
+      if (error) {
+        errors.departureDate = origins.length > 1 ? `${origin.code}: ${error}` : error
+        break
+      }
+    }
   }
 
   if (!/^[1-9]$/.test(draft.adults)) {
     errors.adults = 'Choose 1–9 adults.'
   }
 
-  if (!draft.cabins.length) {
-    errors.cabins = 'Choose at least one cabin.'
-  } else if (draft.cabins.some((cabin) => !cabinChoices.includes(cabin))) {
+  if (draft.cabins.some((cabin) => !cabinChoices.includes(cabin))) {
     errors.cabins = 'Choose from the listed cabins.'
   } else if (new Set(draft.cabins).size !== draft.cabins.length) {
     errors.cabins = 'Choose each cabin only once.'

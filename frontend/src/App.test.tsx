@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { mockAirportCatalog } from './test-airports'
 
 describe('trip entry', () => {
   it.each(['availability', 'awards'])('does not seed results from the obsolete %s preview link', (preview) => {
@@ -100,6 +101,7 @@ describe('trip entry', () => {
 
   it('lets travelers select and remove cabins independently', async () => {
     const user = userEvent.setup()
+    mockAirportCatalog()
     render(<App />)
     const economy = screen.getByRole('checkbox', { name: 'Economy' })
     const business = screen.getByRole('checkbox', { name: 'Business' })
@@ -118,10 +120,11 @@ describe('trip entry', () => {
 
   it('clears the draft and focuses the heading when starting a new trip', async () => {
     const user = userEvent.setup()
+    mockAirportCatalog()
     render(<App />)
     const message = screen.getByRole('textbox', { name: 'Your trip request' })
-    const origin = screen.getByRole('textbox', { name: 'From' })
-    const destination = screen.getByRole('textbox', { name: 'To' })
+    const origin = screen.getByRole('combobox', { name: 'From' })
+    const destination = screen.getByRole('combobox', { name: 'To' })
     const departureDate = screen.getByLabelText('Departure date')
     const adults = screen.getByRole('combobox', { name: 'Adults' })
     const business = screen.getByRole('checkbox', { name: 'Business' })

@@ -7,8 +7,9 @@ import { cabinOptions } from '../services/availability-presentation'
 
 const airportNames: Record<string, string> = { JFK: 'New York', SEA: 'Seattle' }
 
-function airportLabel(code: string) {
-  return airportNames[code] ? `${airportNames[code]} · ${code}` : code
+function airportLabel(selection: string | readonly string[]) {
+  const codes = typeof selection === 'string' ? [selection] : selection
+  return codes.map((code) => airportNames[code] ? `${airportNames[code]} · ${code}` : code).join(' / ')
 }
 
 export default function CurrentTrip({ results, criteria }: { results: ChatResult[]; criteria?: SearchCriteria }) {
@@ -20,7 +21,7 @@ export default function CurrentTrip({ results, criteria }: { results: ChatResult
   const startDate = criteria?.departure_date ?? dates[0]
   const endDate = criteria?.departure_date ?? dates[dates.length - 1]
   const cabins = cabinOptions.filter((option) => criteria
-    ? criteria.cabins.includes(option.key) : results.some((row) => row.cabin === option.key))
+    ? criteria.cabins?.includes(option.key) : results.some((row) => row.cabin === option.key))
 
   return (
     <section className="current-trip panel toolbar" aria-label="Current trip">
@@ -34,7 +35,7 @@ export default function CurrentTrip({ results, criteria }: { results: ChatResult
           </> : <span>Multiple returned routes</span>}
         </p>
         <p className="current-trip-criteria">
-          <span>{cabins.map((cabin) => cabin.label).join(' + ')}</span>
+          <span>{criteria && !criteria.cabins ? 'All cabins' : cabins.map((cabin) => cabin.label).join(' + ')}</span>
           <span>
             <time dateTime={startDate}>{awardDateLabel(startDate)}</time>
             {startDate !== endDate && <>

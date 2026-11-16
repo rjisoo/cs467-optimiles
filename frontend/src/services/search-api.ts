@@ -1,22 +1,30 @@
 import type { TripDraft } from '../components/TripEntry'
-import { validateTripFields } from '../lib/trip-validation'
+import { resolveTripAirports, validateTripFields } from '../lib/trip-validation'
+import type { Airport } from './airports'
 import { validateResults, type ChatCabin, type ChatResult } from './chat-response'
 
 export type SearchCriteria = Readonly<{
-  origin: string
-  destination: string
+  origin: string | readonly string[]
+  destination: string | readonly string[]
   departure_date: string
   passengers: number
-  cabins: readonly ChatCabin[]
+  cabins?: readonly ChatCabin[]
 }>
 export type SearchResponse = { results: ChatResult[]; message: string | null }
 
-export function captureSearchCriteria(draft: TripDraft): SearchCriteria {
-  if (Object.keys(validateTripFields(draft)).length) throw new Error('Invalid search criteria')
+export function captureSearchCriteria(draft: TripDraft, airports: readonly Airport[], now = new Date()): SearchCriteria {
+  if (Object.keys(validateTripFields(draft, airports, now)).length) throw new Error('Invalid search criteria')
+  function endpoint(field: 'origin' | 'destination') {
+    const codes = resolveTripAirports(draft, field, airports).map((airport) => airport.code)
+    return codes.length === 1 ? codes[0] : Object.freeze(codes)
+  }
   return Object.freeze({
-    origin: draft.origin.trim().toUpperCase(), destination: draft.destination.trim().toUpperCase(),
+    origin: endpoint('origin'),
+    destination: endpoint('destination'),
     departure_date: draft.departureDate, passengers: Number(draft.adults),
-    cabins: Object.freeze(draft.cabins.map((cabin) => cabin.toLowerCase().replaceAll(' ', '_') as ChatCabin)),
+    ...(draft.cabins.length ? {
+      cabins: Object.freeze(draft.cabins.map((cabin) => cabin.toLowerCase().replaceAll(' ', '_') as ChatCabin)),
+    } : {}),
   })
 }
 

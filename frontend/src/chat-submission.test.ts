@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
 import useChatJourney from './useChatJourney'
+import { mockAirportCatalog } from './test-airports'
 
 it('sends the actual text verbatim and stores the returned reply', async () => {
   const response = { reply: 'What date would you like to travel?', results: [] }
@@ -39,10 +40,14 @@ it.each(['not JSON', JSON.stringify({ reply: 'Incomplete response' })])('reports
 })
 
 it('sends exact form criteria only through search and preserves every selected cabin', async () => {
+  mockAirportCatalog()
   vi.mocked(fetch).mockImplementation(async () => Response.json({ message: 'No matching cached awards', results: [] }))
   const { result } = renderHook(useChatJourney)
+  await act(async () => result.current.loadAirports())
+  vi.mocked(fetch).mockClear()
   act(() => result.current.setDraft({
     message: 'Keep my unsent message', origin: ' lax ', destination: ' jfk ',
+    originCodes: [' lax '], destinationCodes: [' jfk '],
     departureDate: '2026-12-01', adults: '2', cabins: ['Economy', 'Premium economy', 'Business', 'First'],
   }))
   await act(async () => result.current.submit('form'))

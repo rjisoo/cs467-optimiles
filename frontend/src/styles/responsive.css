@@ -1,15 +1,19 @@
-/* Site-wide sizing defaults. Pages/components consume semantic tokens;
-   the compact award profile may override them without changing form/dialog defaults.
+/* Site-wide sizing defaults. Pages/components consume semantic tokens.
    Layout queries remain local: navigation 56.25rem, form containers 12/36/44rem. */
+
 :root {
   --layout-progress: clamp(0, calc((100vw - 425px) / 1015px), 1);
   --space-1: calc(.375rem + .125rem * var(--layout-progress));
   --space-2: calc(2 * var(--space-1));
   --space-3: calc(3 * var(--space-1));
   --space-4: calc(4 * var(--space-1));
-  --space-5: calc(6 * var(--space-1));
   --radius: 1rem;
   --radius-control: .5rem;
+  --radius-compact: 5px;
+  --radius-compact-card: 7px;
+  --font-compact-label: 12px;
+  --font-compact-caption: 11px;
+  --font-compact-note: 10px;
   --font-body: clamp(.8125rem, calc(.75875rem + .268vw), 1rem);
   --font-control: clamp(.75rem, calc(.714375rem + .179vw), .875rem);
   --font-input: var(--font-control);
@@ -33,6 +37,9 @@
 }
 
 /* Keep editable text readable on touch devices, independently of compact display data. */
+
 @media (any-pointer: coarse) {
-  :root { --font-input: max(1rem, var(--font-control)); }
+  :root {
+    --font-input: max(1rem, var(--font-control));
+  }
 }

@@ -11,6 +11,13 @@ const result = (overrides: Partial<ChatResult> = {}): ChatResult => ({
 })
 
 describe('returned trip context', () => {
+  it.each([false, true])('keeps the all-cabin request explicit with returned availability=%s', (withResult) => {
+    render(<CurrentTrip results={withResult ? [result()] : []} criteria={{
+      origin: 'JFK', destination: 'SEA', departure_date: '2026-12-01', passengers: 2,
+    }} />)
+    expect(screen.getByRole('region', { name: 'Current trip' })).toHaveTextContent('All cabins')
+  })
+
   it('uses returned route and cabin without inferring passenger or request criteria', () => {
     render(<CurrentTrip results={[result()]} />)
     const trip = within(screen.getByRole('region', { name: 'Current trip' }))

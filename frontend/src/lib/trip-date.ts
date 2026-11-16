@@ -31,3 +31,36 @@ export function formatUpdatedAt(value: string | null, timeZone?: string): string
     hour12: false, timeZoneName: 'short', timeZone,
   }).format(date)
 }
+
+export function departureDateBounds(timeZone: string | undefined, now: Date) {
+  if (!timeZone || /^[+-]/.test(timeZone)) {
+    return 'The departure airport timezone must be confirmed before searching.'
+  }
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime())) {
+    return 'The current date could not be checked. Try again.'
+  }
+  let today: string
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone, calendar: 'iso8601', numberingSystem: 'latn',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(now)
+    const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)!.value
+    today = `${part('year').padStart(4, '0')}-${part('month')}-${part('day')}`
+  } catch {
+    return 'The departure airport timezone must be confirmed before searching.'
+  }
+  // UTC holds calendar labels; advance calendar days without changing airport-local instants.
+  const lastDate = new Date(`${today}T00:00:00Z`)
+  lastDate.setUTCDate(lastDate.getUTCDate() + 365)
+  return { min: today, max: lastDate.toISOString().slice(0, 10) }
+}
+
+export function validateDepartureDate(value: string, timeZone: string | undefined, now: Date): string | undefined {
+  if (!isExactDate(value)) return 'Choose a valid departure date (YYYY-MM-DD).'
+  const bounds = departureDateBounds(timeZone, now)
+  if (typeof bounds === 'string') return bounds
+  if (value < bounds.min) return "Choose today or later in the departure airport's timezone."
+  if (value > bounds.max) return 'Choose a departure date within 365 days of today.'
+  return undefined
+}

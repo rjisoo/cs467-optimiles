@@ -3,36 +3,83 @@
 These define the API contract with the frontend. The OpenAPI schemas at /docs are
 generated from them; update the examples in openapi.py when changing them."""
 
-from datetime import date
-from typing import Literal
+from datetime import date, timedelta
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from backend import airports
+from backend.airports import airport_today, get_airport
+
 Cabin = Literal["economy", "premium_economy", "business", "first"]
+AirportCode = Annotated[str, Field(pattern=r"^[A-Z]{3}$")]
+AirportSelection = AirportCode | Annotated[list[AirportCode], Field(min_length=1, max_length=6)]
 
 
 class SearchCriteria(BaseModel):
-    origin: str = Field(pattern=r"^[A-Z]{3}$", description="IATA airport code")
-    destination: str = Field(pattern=r"^[A-Z]{3}$", description="IATA airport code")
+    origin: AirportCode = Field(description="IATA airport code")
+    destination: AirportCode = Field(description="IATA airport code")
     departure_date: date
     return_date: date | None = None
     cabin: Cabin | None = Field(
         default=None, description="Requested cabin; omitted or null searches all available cabins"
+    )
+    cabins: list[Cabin] | None = Field(
+        default=None, min_length=1, max_length=4,
+        description="Requested cabin alternatives; cannot be combined with cabin",
     )
     passengers: int = Field(default=1, ge=1, le=9)
 
     @field_validator("origin", "destination", mode="before")
     @classmethod
     def normalize_airport(cls, value: object) -> object:
+        if isinstance(value, list):
+            return [code.strip().upper() if isinstance(code, str) else code for code in value]
         return value.strip().upper() if isinstance(value, str) else value
+
+    @field_validator("origin", "destination")
+    @classmethod
+    def check_airport_membership(cls, value: str | list[str]) -> str | list[str]:
+        codes = [value] if isinstance(value, str) else value
+        if len(codes) != len(set(codes)):
+            raise ValueError("Airport selections must not contain duplicates")
+        for code in codes:
+            if get_airport(code) is None:
+                raise ValueError("Choose an airport from the /api/airports catalog")
+        return value
+
+    @property
+    def origin_codes(self) -> list[str]:
+        return [self.origin] if isinstance(self.origin, str) else self.origin
+
+    @property
+    def destination_codes(self) -> list[str]:
+        return [self.destination] if isinstance(self.destination, str) else self.destination
 
     @model_validator(mode="after")
     def check_route_and_dates(self) -> "SearchCriteria":
-        if self.origin == self.destination:
-            raise ValueError("origin and destination must differ")
+        if self.cabins is not None:
+            if self.cabin is not None:
+                raise ValueError("Supply cabin or cabins, not both")
+            if len(set(self.cabins)) != len(self.cabins):
+                raise ValueError("cabins must not contain duplicates")
+        if set(self.origin_codes) & set(self.destination_codes):
+            raise ValueError("origin and destination must differ; airport selections must not overlap")
+        now = airports.utc_now()
+        for origin in self.origin_codes:
+            today = airport_today(origin, now)
+            if not today <= self.departure_date <= today + timedelta(days=365):
+                raise ValueError("departure_date must be between origin-local today and today +365 days for every origin")
         if self.return_date and self.return_date < self.departure_date:
             raise ValueError("return_date must be on or after departure_date")
         return self
+
+
+class StructuredSearchCriteria(SearchCriteria):
+    """Direct search accepts alternatives; the chat tool keeps singular criteria."""
+
+    origin: AirportSelection = Field(description="One IATA code or 1–6 unique airport codes")
+    destination: AirportSelection = Field(description="One IATA code or 1–6 unique airport codes")
 
 
 class Result(BaseModel):

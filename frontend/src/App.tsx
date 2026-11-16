@@ -20,6 +20,9 @@ function App() {
     cancel,
     reset,
     retry,
+    airportCatalog,
+    airportStatus,
+    loadAirports,
   } = useChatJourney()
   const hasConversation = turns.length > 0
   const latestTurn = turns[turns.length - 1]
@@ -88,6 +91,9 @@ function App() {
           pending={pending}
           onCancel={cancel}
           composerOnly={hasConversation}
+          airportCatalog={airportCatalog}
+          airportStatus={airportStatus}
+          onLoadAirports={loadAirports}
         />
       </main>
     </div>

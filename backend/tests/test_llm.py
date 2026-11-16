@@ -35,7 +35,10 @@ SEARCH_ARGS = {
     "destination_quote": "Tokyo",
     "date_quote": "Dec 1",
 }
-CRITERIA = SearchCriteria.model_validate(SEARCH_ARGS)
+
+
+def criteria():
+    return SearchCriteria.model_validate(SEARCH_ARGS)
 
 
 def text_response(text):
@@ -85,7 +88,7 @@ def chat(client, message=USER_TEXT, history=()):
 
 def test_run_search_tool_returns_results_from_code():
     payload, results = run_search_tool(SEARCH_ARGS, USER_TEXT)
-    expected = search_awards(CRITERIA).results
+    expected = search_awards(criteria()).results
     assert results == expected
     assert payload["count"] == len(expected)
     assert [r["cents_per_point"] for r in payload["results"]] == [
@@ -98,6 +101,14 @@ def test_run_search_tool_reports_invalid_args():
     assert payload["error"] == "Invalid search criteria"
     assert payload["details"]
     assert results == []
+
+
+def test_chat_ignores_undeclared_cabins_argument():
+    _, results = run_search_tool({**SEARCH_ARGS, "cabins": ["economy"]}, USER_TEXT)
+    assert results == search_awards(criteria()).results
+    ungrounded = {**SEARCH_ARGS, "cabin_quote": "", "cabins": ["business"]}
+    _, results = run_search_tool(ungrounded, USER_TEXT)
+    assert {result.cabin for result in results} == {"economy", "business"}
 
 
 @pytest.mark.parametrize(("message", "cabin", "quote", "expected"), [
@@ -177,7 +188,7 @@ def test_details_from_earlier_user_messages_count():
     ]
     client = FakeClient(tool_response(SEARCH_ARGS), text_response("Here are 3 options."))
     response = chat(client, "Dec 1", history)
-    assert response.results == search_awards(CRITERIA).results
+    assert response.results == search_awards(criteria()).results
 
 
 def test_assistant_messages_do_not_count_as_user_details():
@@ -203,7 +214,7 @@ def test_tool_call_then_summary():
     client = FakeClient(tool_response(SEARCH_ARGS), text_response("Here are 3 options."))
     response = chat(client)
     assert response.reply == "Here are 3 options."
-    assert response.results == search_awards(CRITERIA).results
+    assert response.results == search_awards(criteria()).results
     assert sent_function_response(client, 1)["count"] == len(response.results)
 
 

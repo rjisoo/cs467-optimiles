@@ -1,17 +1,19 @@
 import { expect, it, vi } from 'vitest'
 import { captureSearchCriteria, searchAwards, validateSearchResponse } from './search-api'
 import { validateChatResponse } from './chat-response'
+import { testAirports } from '../test-airports'
 
 const draft = {
   message: '', origin: ' jfk ', destination: ' sea ', departureDate: '2026-12-01', adults: '2',
+  originCodes: [' jfk '], destinationCodes: [' sea '],
   cabins: ['Premium economy', 'First'],
 }
 
 it('captures validated, normalized criteria independently of mutable form fields', () => {
   const editable = { ...draft, cabins: [...draft.cabins] }
-  const criteria = captureSearchCriteria(editable)
+  const criteria = captureSearchCriteria(editable, testAirports)
   editable.cabins.pop()
-  editable.origin = 'LAX'
+  editable.originCodes = ['LAX']
   expect(criteria).toEqual({ origin: 'JFK', destination: 'SEA', departure_date: '2026-12-01',
     passengers: 2, cabins: ['premium_economy', 'first'] })
   expect(Object.isFrozen(criteria)).toBe(true)
@@ -19,10 +21,10 @@ it('captures validated, normalized criteria independently of mutable form fields
 })
 
 it.each([
-  { origin: 'New York' }, { destination: 'JFK' }, { departureDate: '2026-02-30' },
-  { adults: '0' }, { cabins: [] }, { cabins: ['Suite'] }, { cabins: ['Economy', 'Economy'] },
+  { originCodes: ['New York'] }, { destinationCodes: ['JFK'] }, { departureDate: '2026-02-30' },
+  { adults: '0' }, { cabins: ['Suite'] }, { cabins: ['Economy', 'Economy'] },
 ])('rejects invalid request criteria %j', (changes) => {
-  expect(() => captureSearchCriteria({ ...draft, ...changes })).toThrow('Invalid search criteria')
+  expect(() => captureSearchCriteria({ ...draft, ...changes }, testAirports)).toThrow('Invalid search criteria')
   expect(fetch).not.toHaveBeenCalled()
 })
 
@@ -45,10 +47,10 @@ it.each([
 ])('reports search failure %s safely', async (status, message) => {
   if (status === null) vi.mocked(fetch).mockRejectedValueOnce(new TypeError('Failed to fetch'))
   else vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status }))
-  await expect(searchAwards(captureSearchCriteria(draft), new AbortController().signal)).rejects.toThrow(message)
+  await expect(searchAwards(captureSearchCriteria(draft, testAirports), new AbortController().signal)).rejects.toThrow(message)
 })
 
 it.each(['not JSON', JSON.stringify({ reply: 'Wrong envelope', results: [] })])('reports invalid wire response %s', async (body) => {
   vi.mocked(fetch).mockResolvedValueOnce(new Response(body))
-  await expect(searchAwards(captureSearchCriteria(draft), new AbortController().signal)).rejects.toThrow('invalid response')
+  await expect(searchAwards(captureSearchCriteria(draft, testAirports), new AbortController().signal)).rejects.toThrow('invalid response')
 })
