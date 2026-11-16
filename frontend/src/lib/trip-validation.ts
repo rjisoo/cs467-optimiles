@@ -13,10 +13,14 @@ export function validateTripFields(draft: TripDraft): TripFieldErrors {
 
   if (!origin) {
     errors.origin = 'Enter a departure airport.'
+  } else if (!/^[A-Z]{3}$/.test(origin)) {
+    errors.origin = 'Enter a three-letter airport code, such as JFK.'
   }
 
   if (!destination) {
     errors.destination = 'Enter an arrival airport.'
+  } else if (!/^[A-Z]{3}$/.test(destination)) {
+    errors.destination = 'Enter a three-letter airport code, such as SEA.'
   } else if (origin === destination) {
     errors.destination = 'Choose a different arrival airport.'
   }
@@ -35,6 +39,8 @@ export function validateTripFields(draft: TripDraft): TripFieldErrors {
     errors.cabins = 'Choose at least one cabin.'
   } else if (draft.cabins.some((cabin) => !cabinChoices.includes(cabin))) {
     errors.cabins = 'Choose from the listed cabins.'
+  } else if (new Set(draft.cabins).size !== draft.cabins.length) {
+    errors.cabins = 'Choose each cabin only once.'
   }
 
   return errors

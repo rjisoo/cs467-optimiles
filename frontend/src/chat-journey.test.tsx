@@ -131,7 +131,7 @@ describe('chat conversation controls', () => {
     expect(screen.getByRole('button', { name: 'Cancel search' })).toHaveFocus()
     fireEvent.keyDown(screen.getByRole('textbox', { name: 'Continue your search' }), { key: 'Enter' })
     expect(fetch).toHaveBeenCalledTimes(1)
-    await complete(request)
+    await act(async () => request(Response.json(source === 'chat' ? response : { message: null, results: response.results })))
     const table = screen.getByRole('table')
     expect(within(table).getByText('Alaska Mileage Plan')).toBeVisible()
     fireEvent.click(within(table).getByText('Alaska Mileage Plan'))

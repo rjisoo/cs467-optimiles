@@ -40,11 +40,11 @@ describe('actual chat response boundary', () => {
     { cash_fees_usd: Infinity }, { seats_available: -1 }, { cabin: 'suite' },
     { departure_date: '2026-02-30' }, { origin: '' }, { program: null },
   ])('rejects malformed result fields %j', (overrides) => {
-    expect(() => validateChatResponse({ reply: 'Reply', results: [{ ...result, ...overrides }] })).toThrow('Invalid chat response')
+    expect(() => validateChatResponse({ reply: 'Reply', results: [{ ...result, ...overrides }] })).toThrow('Invalid response')
   })
 
   it.each([{}, { reply: 7, results: [] }, { reply: 'Reply', results: null }])('rejects malformed envelopes %j', (payload) => {
-    expect(() => validateChatResponse(payload)).toThrow('Invalid chat response')
+    expect(() => validateChatResponse(payload)).toThrow('Invalid response')
   })
 
   it('rejects invalid JSON and schema instead of substituting a successful example', async () => {

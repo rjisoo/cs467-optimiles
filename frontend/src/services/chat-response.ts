@@ -19,7 +19,7 @@ export type ChatResult = {
 export type ChatResponse = { reply: string; results: ChatResult[] }
 
 function invalid(path: string): never {
-  throw new Error(`Invalid chat response at ${path}`)
+  throw new Error(`Invalid response at ${path}`)
 }
 
 function record(value: unknown, path: string): Record<string, unknown> {
@@ -51,8 +51,12 @@ function nullableCpp(value: unknown, path: string): number | null {
 export function validateChatResponse(input: unknown): ChatResponse {
   const response = record(input, 'response')
   if (typeof response.reply !== 'string') invalid('reply')
-  if (!Array.isArray(response.results)) invalid('results')
-  const results = response.results.map((value, index): ChatResult => {
+  return { reply: response.reply, results: validateResults(response.results) }
+}
+
+export function validateResults(input: unknown): ChatResult[] {
+  if (!Array.isArray(input)) invalid('results')
+  return input.map((value, index): ChatResult => {
     const path = `results[${index}]`
     const row = record(value, path)
     const cabin = text(row.cabin, `${path}.cabin`)
@@ -76,5 +80,4 @@ export function validateChatResponse(input: unknown): ChatResponse {
       seats_available: nullableNumber(row.seats_available, `${path}.seats_available`, true),
     }
   })
-  return { reply: response.reply, results }
 }

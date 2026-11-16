@@ -69,7 +69,8 @@ function App() {
         </header>
         {hasConversation && (
           <>
-            <CurrentTrip results={latestTurn.response?.results ?? []} />
+            <CurrentTrip results={latestTurn.response?.results ?? []}
+              criteria={latestTurn.source === 'form' ? latestTurn.payload : undefined} />
             <Conversation
               turns={turns}
               lastActionId={lastActionId}

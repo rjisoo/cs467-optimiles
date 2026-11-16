@@ -1,17 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
 import { sendChatMessage } from './services/chat-api'
 import type { ChatResponse } from './services/chat-response'
+import { captureSearchCriteria, searchAwards, type SearchCriteria, type SearchResponse } from './services/search-api'
 import type { TripDraft } from './components/TripEntry'
 import { validateTripFields } from './lib/trip-validation'
 
 export type SearchTurn = {
   id: number
-  source: 'chat' | 'form'
   request: string
   status: 'pending' | 'success' | 'canceled' | 'failed'
   error?: string
-  response?: ChatResponse
-}
+  response?: ChatResponse | SearchResponse
+} & (
+  | { source: 'chat'; payload: Readonly<{ message: string }> }
+  | { source: 'form'; payload: SearchCriteria }
+)
 
 function createTripDraft(): TripDraft {
   return { message: '', origin: '', destination: '', departureDate: '', adults: '1', cabins: [] }
@@ -43,7 +46,9 @@ export default function useChatJourney() {
       : [...previous, turn])
 
     try {
-      const response = await sendChatMessage(turn.request, controller.signal)
+      const response = turn.source === 'form'
+        ? await searchAwards(turn.payload, controller.signal)
+        : await sendChatMessage(turn.payload.message, controller.signal)
       if (active.current !== controller) return
 
       setDraft((current) => turn.source === 'chat' && current.message === turn.request
@@ -55,7 +60,7 @@ export default function useChatJourney() {
     } catch (error) {
       if (active.current !== controller) return
 
-      const message = error instanceof Error ? error.message : 'The chat request failed. Please try again.'
+      const message = error instanceof Error ? error.message : 'The request failed. Please try again.'
       setTurns((previous) => previous.map((item) => item.id === turn.id
         ? { ...item, status: 'failed', error: message }
         : item))
@@ -68,21 +73,22 @@ export default function useChatJourney() {
     if (active.current) return
     if (source === 'chat' && !draft.message.trim()) return
 
-    let request = draft.message
     if (source === 'form') {
       setFormAttempt((attempt) => attempt + 1)
       if (Object.keys(validateTripFields(draft)).length) return
 
-      const origin = draft.origin.trim().toUpperCase()
-      const destination = draft.destination.trim().toUpperCase()
+      const payload = captureSearchCriteria(draft)
+      const { origin, destination } = payload
       const adultLabel = draft.adults === '1' ? 'adult' : 'adults'
-      request = `${origin} to ${destination}, ${draft.departureDate}, one way, `
+      const request = `${origin} to ${destination}, ${draft.departureDate}, one way, `
         + `${draft.adults} ${adultLabel}. Compare ${draft.cabins.join(', ')}.`
       setDraft((current) => ({ ...current, origin, destination }))
+      void run({ id: ++nextId.current, source, request, payload, status: 'pending' })
     } else {
       setFormAttempt(0)
+      const payload = Object.freeze({ message: draft.message })
+      void run({ id: ++nextId.current, source, request: draft.message, payload, status: 'pending' })
     }
-    void run({ id: ++nextId.current, source, request, status: 'pending' })
   }
 
   function cancel() {

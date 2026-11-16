@@ -33,15 +33,21 @@ describe('structural trip validation', () => {
     })
   })
 
-  it('submits any structurally valid route through chat without a demo gate', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ reply: 'Searching LHR', results: [] }))
+  it('submits a structurally valid route directly without a demo gate', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ message: null, results: [] }))
     const { result } = renderHook(useChatJourney)
     act(() => result.current.setDraft({ ...validDraft, destination: 'LHR' }))
     await act(async () => result.current.submit('form'))
     expect(result.current.fieldErrors).toEqual({})
-    expect(fetch).toHaveBeenCalledWith('/api/chat', expect.objectContaining({
-      body: JSON.stringify({ message: 'JFK to LHR, 2026-12-01, one way, 1 adult. Compare Economy.' }),
+    expect(fetch).toHaveBeenCalledWith('/api/search', expect.objectContaining({
+      body: JSON.stringify({ origin: 'JFK', destination: 'LHR', departure_date: '2026-12-01', passengers: 1, cabins: ['economy'] }),
     }))
+  })
+
+  it.each(['New York', 'JFK1', 'JF', '123', 'ＪＦＫ'])('rejects non-code airport input %s', (airport) => {
+    expect(validateTripFields({ ...validDraft, origin: airport, destination: airport })).toMatchObject({
+      origin: expect.stringContaining('three-letter airport code'), destination: expect.stringContaining('three-letter airport code'),
+    })
   })
 
 })
