@@ -5,13 +5,16 @@ results. It never searches or computes values itself."""
 
 import logging
 import os
+import threading
 from datetime import date
 from pathlib import Path
 
+import httpx
 from dotenv import load_dotenv
 from google import genai
 from google.genai import errors, types
 
+from backend.llm.rate_limit import GeminiRateLimiter
 from backend.llm.tools import SEARCH_AWARDS, SEARCH_AWARDS_DECLARATION, run_search_tool
 from backend.models import ChatMessage, ChatRequest, ChatResponse, Result
 
@@ -22,6 +25,9 @@ DEFAULT_MODEL = "gemini-3.5-flash-lite"
 MAX_TOOL_ROUNDS = 3
 # Only the most recent history is sent, so a long chat doesn't grow every request.
 MAX_HISTORY_MESSAGES = 20
+# Per Gemini call. MAX_TOOL_ROUNDS calls must fit in the server's request timeout
+# (Gunicorn's is 120 s in deploy/launch.sh).
+DEFAULT_TIMEOUT_SECONDS = 30.0
 
 ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 
@@ -29,6 +35,13 @@ ROUND_LIMIT_REPLY = (
     "Sorry, I couldn't finish that search. Try rephrasing, or use the search form."
 )
 UNAVAILABLE_REPLY = "The assistant is unavailable right now. Please try the search form."
+TIMEOUT_REPLY = (
+    "The assistant took too long to answer. Please try again, or use the search form."
+)
+BUSY_REPLY = (
+    "The assistant is getting a lot of requests right now. Please wait a minute and try "
+    "again, or use the search form."
+)
 
 SYSTEM_PROMPT = """You help travelers find award flights and understand what their points are worth.
 Today's date is {today}.
@@ -70,12 +83,45 @@ def get_client() -> genai.Client:
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise LLMNotConfigured("GEMINI_API_KEY is not set")
-    return genai.Client(api_key=api_key)
+    timeout_ms = int(get_timeout_seconds() * 1000)
+    return genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=timeout_ms))
 
 
 def get_model() -> str:
     load_dotenv(ENV_FILE)
     return os.getenv("GEMINI_MODEL") or DEFAULT_MODEL
+
+
+def get_timeout_seconds() -> float:
+    """Per-call timeout from GEMINI_TIMEOUT_SECONDS, or the default if unset or invalid."""
+    load_dotenv(ENV_FILE)
+    value = os.getenv("GEMINI_TIMEOUT_SECONDS", "").strip()
+    if not value:
+        return DEFAULT_TIMEOUT_SECONDS
+    try:
+        seconds = float(value)
+    except ValueError:
+        seconds = 0.0
+    if seconds <= 0:
+        logger.warning(
+            "Ignoring GEMINI_TIMEOUT_SECONDS=%r; using %s", value, DEFAULT_TIMEOUT_SECONDS
+        )
+        return DEFAULT_TIMEOUT_SECONDS
+    return seconds
+
+
+_rate_limiter: GeminiRateLimiter | None = None
+_rate_limiter_lock = threading.Lock()
+
+
+def get_rate_limiter() -> GeminiRateLimiter:
+    """The process-wide limiter, built from GEMINI_RPM / GEMINI_RPD on first use."""
+    global _rate_limiter
+    with _rate_limiter_lock:
+        if _rate_limiter is None:
+            load_dotenv(ENV_FILE)
+            _rate_limiter = GeminiRateLimiter.from_env()
+        return _rate_limiter
 
 
 def recent_history(request: ChatRequest) -> list[ChatMessage]:
@@ -101,11 +147,15 @@ def build_contents(request: ChatRequest) -> list[types.Content]:
 
 
 def run_chat(
-    request: ChatRequest, client: genai.Client | None = None, model: str | None = None
+    request: ChatRequest,
+    client: genai.Client | None = None,
+    model: str | None = None,
+    rate_limiter: GeminiRateLimiter | None = None,
 ) -> ChatResponse:
     """Answer one chat message, running award searches the model asks for."""
     client = client or get_client()
     model = model or get_model()
+    rate_limiter = rate_limiter or get_rate_limiter()
     config = types.GenerateContentConfig(
         system_instruction=SYSTEM_PROMPT.format(today=date.today().isoformat()),
         tools=[types.Tool(function_declarations=[SEARCH_AWARDS_DECLARATION])],
@@ -117,6 +167,9 @@ def run_chat(
 
     try:
         for _ in range(MAX_TOOL_ROUNDS):
+            if not rate_limiter.try_acquire():
+                logger.warning("Gemini rate limit reached; skipping the call")
+                return ChatResponse(reply=BUSY_REPLY, results=[])
             response = client.models.generate_content(
                 model=model, contents=contents, config=config
             )
@@ -137,7 +190,16 @@ def run_chat(
                     )
                 )
             contents.append(types.Content(role="user", parts=response_parts))
-    except errors.APIError:
+    except httpx.TimeoutException:
+        logger.warning("Gemini call timed out")
+        return ChatResponse(reply=TIMEOUT_REPLY, results=[])
+    except httpx.HTTPError:
+        logger.exception("Could not reach Gemini")
+        return ChatResponse(reply=UNAVAILABLE_REPLY, results=[])
+    except errors.APIError as error:
+        if error.code == 429:
+            logger.warning("Gemini quota exceeded: %s", error)
+            return ChatResponse(reply=BUSY_REPLY, results=[])
         logger.exception("Gemini API call failed")
         return ChatResponse(reply=UNAVAILABLE_REPLY, results=[])
 

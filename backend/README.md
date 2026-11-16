@@ -82,6 +82,17 @@ message into `search_awards` arguments; code validates them with `SearchCriteria
 search and returns its structured results. CPP remains unreported without comparable cash fares. The model only summarizes the tool output and is told
 never to invent numbers. Each message is capped at 3 model calls (`MAX_TOOL_ROUNDS`).
 
+Each model call has a timeout (`GEMINI_TIMEOUT_SECONDS`, default 30), so a message waits at
+most about 90 s for Gemini, inside Gunicorn's 120 s limit in `deploy/launch.sh`. Before every
+call, `llm/rate_limit.py` checks a per-process limit on calls in the last minute and the last
+24 hours (`GEMINI_RPM`, default 10, and `GEMINI_RPD`, default 500; `0` turns a limit off). Each
+tool round counts as one call. When Gemini times out, can't be reached, returns a 429 quota
+error, or the app's own limit is reached, `/api/chat` still returns `200` with a reply asking
+the user to try again or use the search form, and `results` is empty. The limits are counted
+per worker process, so with `--workers 2` the server can make up to twice as many calls; set
+them for the whole server divided by the worker count. Gemini's own free-tier limits depend on
+the model; check them in Google AI Studio.
+
 The origin, destination and departure date must come from the user. Along with each search the
 model sends the user's own words for them (`origin_quote`, `destination_quote`, `date_quote`);
 `llm/tools.py` checks each quote appears in the user's messages (current message plus history).
@@ -99,7 +110,8 @@ results from earlier turns.
 
 1. Create an API key in Google AI Studio (https://aistudio.google.com/apikey).
 2. Put it in `backend\.env` as `GEMINI_API_KEY=...`. Optionally set `GEMINI_MODEL` to override
-   the default in `llm/gemini_chat.py`.
+   the default in `llm/gemini_chat.py`, and `GEMINI_TIMEOUT_SECONDS`, `GEMINI_RPM` or
+   `GEMINI_RPD` to change the timeout and request limits above.
 
 Without a key, `/api/chat` still works and replies that chat isn't connected yet.
 
@@ -139,6 +151,7 @@ the award search service fails, hits its usage limit, or times out (mapped in
 - `chat.py`: `handle_chat()`, which delegates to the Gemini loop
 - `llm/tools.py`: the `search_awards` tool declaration and `run_search_tool()` (no Gemini imports)
 - `llm/gemini_chat.py`: Gemini client setup and the tool-calling loop
+- `llm/rate_limit.py`: per-minute and per-day limit on Gemini calls
 - `llm/demo.py`: command-line demo against the real API
 - `tests/`: pytest tests
 
