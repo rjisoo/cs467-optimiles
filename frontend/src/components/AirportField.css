@@ -48,10 +48,6 @@
   color: var(--color-text-muted);
 }
 
-.airport-limit {
-  color: var(--color-text-muted);
-  font-size: var(--font-small);
-}
 .airport-chips {
   display: flex;
   flex-wrap: wrap;
@@ -108,8 +104,7 @@
 }
 .airport-selection-input input:focus { outline: none; box-shadow: none; }
 .airport-multiple-popup { display: flex; flex-direction: column; overflow: hidden; }
-.airport-picker-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 2px 8px; }
-.airport-picker-toolbar span { color: var(--color-text-muted); font-size: var(--font-small); }
+.airport-picker-toolbar { display: flex; align-items: center; justify-content: flex-end; padding: 2px 8px; }
 .airport-picker-toolbar button { min-height: 28px; padding-inline: 8px; }
 .airport-multiple-options { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .airport-choice input { width: 1.125rem; height: 1.125rem; accent-color: var(--color-primary); cursor: pointer; }

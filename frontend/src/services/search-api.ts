@@ -1,19 +1,22 @@
 import type { TripDraft } from '../components/TripEntry'
 import { resolveTripAirports, validateTripFields } from '../lib/trip-validation'
+import { departureWindow } from '../lib/trip-date'
 import type { Airport } from './airports'
-import { validateResults, type ChatCabin, type ChatResult } from './chat-response'
+import { validateResults, validateSearchCoverage, type ChatCabin, type ChatResult, type SearchCoverage } from './chat-response'
 
 export type SearchCriteria = Readonly<{
   origin: string | readonly string[]
   destination: string | readonly string[]
   departure_date: string
+  departure_date_end?: string
   passengers: number
   cabins?: readonly ChatCabin[]
 }>
-export type SearchResponse = { results: ChatResult[]; message: string | null }
+export type SearchResponse = { results: ChatResult[]; message: string | null } & SearchCoverage
 
 export function captureSearchCriteria(draft: TripDraft, airports: readonly Airport[], now = new Date()): SearchCriteria {
   if (Object.keys(validateTripFields(draft, airports, now)).length) throw new Error('Invalid search criteria')
+  const { start, end } = departureWindow(draft.departureDate, draft.departureFlex, draft.departureDateEnd)
   function endpoint(field: 'origin' | 'destination') {
     const codes = resolveTripAirports(draft, field, airports).map((airport) => airport.code)
     return codes.length === 1 ? codes[0] : Object.freeze(codes)
@@ -21,7 +24,9 @@ export function captureSearchCriteria(draft: TripDraft, airports: readonly Airpo
   return Object.freeze({
     origin: endpoint('origin'),
     destination: endpoint('destination'),
-    departure_date: draft.departureDate, passengers: Number(draft.adults),
+    departure_date: start,
+    ...(end !== start ? { departure_date_end: end } : {}),
+    passengers: Number(draft.adults),
     ...(draft.cabins.length ? {
       cabins: Object.freeze(draft.cabins.map((cabin) => cabin.toLowerCase().replaceAll(' ', '_') as ChatCabin)),
     } : {}),
@@ -34,7 +39,7 @@ export function validateSearchResponse(input: unknown): SearchResponse {
   if (response.message !== null && typeof response.message !== 'string') {
     throw new Error('Invalid search response message')
   }
-  return { results: validateResults(response.results), message: response.message }
+  return { results: validateResults(response.results), message: response.message, ...validateSearchCoverage(response) }
 }
 
 function failureMessage(status: number | null): string {

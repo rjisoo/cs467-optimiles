@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from unittest.mock import Mock
+from unittest.mock import ANY, Mock
 
 import pytest
 
@@ -23,7 +23,7 @@ REQUEST = {"origin": [" jfk ", "LGA", "ewr"], "destination": ["lhr", " CDG "],
 ])
 def test_direct_search_makes_one_combined_request_without_chat(client, monkeypatch, origin, destination, origin_param, destination_param):
     monkeypatch.setenv("SEATSAERO_TOKEN", "test-token")
-    provider = Mock(return_value={"data": [], "hasMore": True})
+    provider = Mock(return_value={"data": [], "hasMore": False})
     chat = Mock(side_effect=AssertionError("Direct search must not use chat"))
     gemini = Mock(side_effect=AssertionError("Direct search must not use Gemini"))
     monkeypatch.setattr(search, "_fetch_availability", REAL_FETCH)
@@ -35,9 +35,9 @@ def test_direct_search_makes_one_combined_request_without_chat(client, monkeypat
     assert response.get_json() == {"results": [], "message": (
         f"No award availability found from {origin_param.replace(',', ', ')} "
         f"to {destination_param.replace(',', ', ')} on 2026-12-01."
-    )}
+    ), "partial": False, "warnings": []}
     provider.assert_called_once_with({"origin_airport": origin_param, "destination_airport": destination_param,
-                                      "start_date": "2026-12-01", "end_date": "2026-12-01"})
+                                      "start_date": "2026-12-01", "end_date": "2026-12-01", "take": 500}, timeout=ANY)
     chat.assert_not_called()
     gemini.assert_not_called()
 

@@ -104,7 +104,9 @@ export default function useChatJourney() {
       const originLabel = typeof origin === 'string' ? origin : origin.join(', ')
       const destinationLabel = typeof destination === 'string' ? destination : destination.join(', ')
       const adultLabel = draft.adults === '1' ? 'adult' : 'adults'
-      const request = `${originLabel} to ${destinationLabel}, ${draft.departureDate}, one way, `
+      const dates = payload.departure_date_end
+        ? `${payload.departure_date} through ${payload.departure_date_end}` : payload.departure_date
+      const request = `${originLabel} to ${destinationLabel}, ${dates}, one way, `
         + `${draft.adults} ${adultLabel}. Compare ${draft.cabins.length ? draft.cabins.join(', ') : 'all cabins'}.`
       void run({ id: ++nextId.current, source, request, payload, status: 'pending' })
     } else {

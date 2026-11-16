@@ -30,8 +30,9 @@ def test_banks_returns_available_bank_names(client):
     assert response.get_json() == get_banks()
 
 
-def test_search_returns_results(client):
-    response = client.post("/api/search", json=VALID_SEARCH)
+@pytest.mark.parametrize("return_fields", [{}, {"return_date": None}])
+def test_search_returns_results(client, return_fields):
+    response = client.post("/api/search", json={**VALID_SEARCH, **return_fields})
     assert response.status_code == 200
     results = response.get_json()["results"]
     assert results
@@ -40,6 +41,7 @@ def test_search_returns_results(client):
         assert result["cabin"] == "business"
         assert result["seats_available"] is None or result["seats_available"] >= 2
     assert response.get_json()["message"] is None
+    assert (response.get_json()["partial"], response.get_json()["warnings"]) == (False, [])
 
 
 @pytest.mark.parametrize("cabin_fields", [{}, {"cabin": None}])
@@ -94,11 +96,19 @@ def test_search_rejects_same_origin_and_destination(client):
     assert response.get_json()["error"] == "Invalid request"
 
 
-def test_search_rejects_return_before_departure(client):
+@pytest.mark.parametrize("return_date", ["2026-11-01", "2026-12-01", "2026-12-10", "not-a-date", False])
+def test_search_rejects_return_dates_without_searching(client, monkeypatch, return_date):
+    provider = Mock(side_effect=AssertionError("Unsupported return dates must not search"))
+    monkeypatch.setattr("backend.search._fetch_availability", provider)
     response = client.post(
-        "/api/search", json={**VALID_SEARCH, "return_date": "2026-11-01"}
+        "/api/search", json={**VALID_SEARCH, "return_date": return_date}
     )
     assert response.status_code == 400
+    body = response.get_json()
+    assert body["error"] == "Invalid request"
+    assert body["details"][0]["loc"] == ["return_date"]
+    assert "Only one-way searches are supported" in body["details"][0]["msg"]
+    provider.assert_not_called()
 
 
 def test_search_rejects_missing_body(client):
@@ -116,14 +126,14 @@ def test_chat_returns_reply(client, monkeypatch):
         "/api/chat", json={"message": "Tokyo in December?", "history": []}
     )
     assert response.status_code == 200
-    assert response.get_json() == {"reply": "Where are you flying from?", "results": []}
+    assert response.get_json() == {"reply": "Where are you flying from?", "results": [], "partial": False, "warnings": []}
 
 
 def test_chat_without_api_key_says_not_connected(client, monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "")
     response = client.post("/api/chat", json={"message": "Tokyo in December?"})
     assert response.status_code == 200
-    assert response.get_json() == {"reply": NOT_CONFIGURED_REPLY, "results": []}
+    assert response.get_json() == {"reply": NOT_CONFIGURED_REPLY, "results": [], "partial": False, "warnings": []}
 
 
 def test_chat_rejects_overlong_message(client):

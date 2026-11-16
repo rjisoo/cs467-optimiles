@@ -1,5 +1,5 @@
 import type { TripDraft } from '../components/TripEntry'
-import { departureDateBounds, isExactDate, validateDepartureDate } from './trip-date'
+import { departureDateBounds, departureFlexDays, departureWindow, isExactDate, validateDepartureDate } from './trip-date'
 import type { Airport } from '../services/airports'
 
 export const cabinChoices = ['Economy', 'Premium economy', 'Business', 'First']
@@ -56,12 +56,29 @@ export function validateTripFields(draft: TripDraft, airports?: readonly Airport
     errors.departureDate = 'Enter a departure date.'
   } else if (!isExactDate(draft.departureDate)) {
     errors.departureDate = 'Enter a valid date including the year.'
-  } else if (!errors.origin) {
-    for (const origin of origins) {
-      const error = validateDepartureDate(draft.departureDate, origin.timeZone, now)
-      if (error) {
-        errors.departureDate = origins.length > 1 ? `${origin.code}: ${error}` : error
-        break
+  }
+  const flexibility = draft.departureFlex ?? 'exact'
+  if (!['exact', 'custom', ...departureFlexDays.map(String)].includes(flexibility)) {
+    errors.departureFlex = 'Choose a listed date option.'
+  }
+  const dateWindow = departureWindow(draft.departureDate, flexibility, draft.departureDateEnd)
+  if (flexibility === 'custom') {
+    if (!dateWindow.end) errors.departureDateEnd = 'Enter the latest departure date.'
+    else if (!isExactDate(dateWindow.end)) errors.departureDateEnd = 'Enter a valid date including the year.'
+    else if (!errors.departureDate && dateWindow.end < dateWindow.start) {
+      errors.departureDateEnd = 'Latest departure must be on or after earliest departure.'
+    }
+  }
+  if (!errors.origin && !errors.departureDate && !errors.departureDateEnd && !errors.departureFlex) {
+    for (const [index, day] of [dateWindow.start, dateWindow.end].entries()) {
+      for (const origin of origins) {
+        const error = validateDepartureDate(day, origin.timeZone, now)
+        if (error) {
+          const field = flexibility === 'custom' && index === 1 ? 'departureDateEnd' : 'departureDate'
+          const prefix = flexibility !== 'exact' ? 'Selected range: ' : ''
+          errors[field] = prefix + (origins.length > 1 ? `${origin.code}: ${error}` : error)
+          break
+        }
       }
     }
   }

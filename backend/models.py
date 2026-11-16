@@ -20,7 +20,9 @@ class SearchCriteria(BaseModel):
     origin: AirportCode = Field(description="IATA airport code")
     destination: AirportCode = Field(description="IATA airport code")
     departure_date: date
-    return_date: date | None = None
+    return_date: None = Field(
+        default=None, description="Only one-way searches are supported; omit or send null"
+    )
     cabin: Cabin | None = Field(
         default=None, description="Requested cabin; omitted or null searches all available cabins"
     )
@@ -29,6 +31,13 @@ class SearchCriteria(BaseModel):
         description="Requested cabin alternatives; cannot be combined with cabin",
     )
     passengers: int = Field(default=1, ge=1, le=9)
+
+    @field_validator("return_date", mode="before")
+    @classmethod
+    def reject_return_date(cls, value: object) -> None:
+        if value is not None:
+            raise ValueError("Only one-way searches are supported; omit return_date or send null")
+        return None
 
     @field_validator("origin", "destination", mode="before")
     @classmethod
@@ -56,6 +65,10 @@ class SearchCriteria(BaseModel):
     def destination_codes(self) -> list[str]:
         return [self.destination] if isinstance(self.destination, str) else self.destination
 
+    @property
+    def departure_end(self) -> date:
+        return self.departure_date
+
     @model_validator(mode="after")
     def check_route_and_dates(self) -> "SearchCriteria":
         if self.cabins is not None:
@@ -65,21 +78,29 @@ class SearchCriteria(BaseModel):
                 raise ValueError("cabins must not contain duplicates")
         if set(self.origin_codes) & set(self.destination_codes):
             raise ValueError("origin and destination must differ; airport selections must not overlap")
+        if self.departure_end < self.departure_date:
+            raise ValueError("departure_date_end must be on or after departure_date")
         now = airports.utc_now()
         for origin in self.origin_codes:
             today = airport_today(origin, now)
-            if not today <= self.departure_date <= today + timedelta(days=365):
-                raise ValueError("departure_date must be between origin-local today and today +365 days for every origin")
-        if self.return_date and self.return_date < self.departure_date:
-            raise ValueError("return_date must be on or after departure_date")
+            if not today <= self.departure_date <= self.departure_end <= today + timedelta(days=365):
+                raise ValueError("Departure dates must be between origin-local today and today +365 days for every origin")
         return self
 
 
 class StructuredSearchCriteria(SearchCriteria):
-    """Direct search accepts alternatives; the chat tool keeps singular criteria."""
+    """Direct search accepts airport alternatives and a bounded departure range."""
 
     origin: AirportSelection = Field(description="One IATA code or 1–6 unique airport codes")
     destination: AirportSelection = Field(description="One IATA code or 1–6 unique airport codes")
+    departure_date_end: date | None = Field(
+        default=None,
+        description="Inclusive departure range end within every origin's local today through today +365 days; omitted or null uses departure_date",
+    )
+
+    @property
+    def departure_end(self) -> date:
+        return self.departure_date_end or self.departure_date
 
 
 class Result(BaseModel):
@@ -111,6 +132,8 @@ class Result(BaseModel):
 
 class SearchResponse(BaseModel):
     results: list[Result]
+    partial: bool = False
+    warnings: list[str] = Field(default_factory=list)
     message: str | None = Field(
         default=None, description="Why results is empty; null when there are results"
     )
@@ -254,3 +277,5 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     results: list[Result] = []
+    partial: bool = False
+    warnings: list[str] = Field(default_factory=list)

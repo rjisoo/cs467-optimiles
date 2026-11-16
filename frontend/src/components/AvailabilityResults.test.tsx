@@ -13,6 +13,23 @@ function response(results: ChatResult[]): ChatResponse { return { reply: 'Return
 const rows = () => within(screen.getByRole('table')).getAllByRole('row').slice(1)
 
 describe('returned award options', () => {
+  it.each([false, true])('shows literal coverage warnings above returned rows with empty=%s', (empty) => {
+    const warning = '**Limited coverage** <a href="https://example.com">More</a>'
+    render(<AvailabilityResults searchId="partial" response={{ ...response(empty ? [] : [result()]),
+      partial: true, warnings: [warning] }} />)
+    const coverage = screen.getByRole('status', { name: 'Search coverage' })
+    expect(coverage).toHaveTextContent('Partial search results')
+    expect(within(coverage).getByText(warning)).toBeVisible()
+    expect(within(coverage).queryByRole('link')).not.toBeInTheDocument()
+    if (!empty) expect(coverage.compareDocumentPosition(screen.getByRole('table')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it.each([undefined, []])('supplies a partial-coverage fallback when warnings are %j', (warnings) => {
+    render(<AvailabilityResults searchId="partial" response={{ ...response([]), partial: true, warnings }} />)
+    expect(screen.getByRole('status', { name: 'Search coverage' })).toHaveTextContent('Search coverage is incomplete.')
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+  })
+
   it('shows supplied fields and null/zero values without expanding rows that lack provider IDs', async () => {
     const user = userEvent.setup()
     const fetch = vi.spyOn(globalThis, 'fetch')

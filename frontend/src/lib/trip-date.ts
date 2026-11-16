@@ -15,6 +15,21 @@ export function isExactDate(value: string): boolean {
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value
 }
 
+export const departureFlexDays = [1, 3, 7, 14, 28, 60, 180] as const
+
+export function departureWindow(start: string, flexibility = 'exact', end = '') {
+  if (flexibility === 'custom') return { start, end }
+  if (!isExactDate(start) || !departureFlexDays.some((days) => String(days) === flexibility)) {
+    return { start, end: start }
+  }
+  function offset(days: number) {
+    const date = new Date(`${start}T00:00:00Z`)
+    date.setUTCDate(date.getUTCDate() + days)
+    return date.toISOString().slice(0, 10)
+  }
+  return { start: offset(-Number(flexibility)), end: offset(Number(flexibility)) }
+}
+
 export function arrivalDayOffset(departure: string, arrival: string): number {
   const start = departure.slice(0, 10)
   const end = arrival.slice(0, 10)

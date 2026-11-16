@@ -47,6 +47,8 @@ SYSTEM_PROMPT = """You help travelers find award flights and understand what the
 Today's date is {today}.
 
 Rules:
+- Only one-way searches are supported. For round-trip or return-date requests, explain this
+  limitation and ask whether the user wants a one-way search. Do not silently search the outbound leg.
 - Use the search_awards tool for any availability, points or price question. Never invent flights,
   points costs, fees, seat counts or values.
 - The user must give the origin, destination and departure date themselves. If any is missing or
@@ -63,7 +65,8 @@ Rules:
 - Only quote numbers that appear in the tool results. Do not do your own math.
 - If cents_per_point is null, say there is no value data for that option.
 - If cash_fees_usd or seats_available is null, say that it wasn't reported; don't guess.
-- If the tool returns no results, say plainly that no availability was found, using its message.
+- If the tool returns partial=true, explain its warnings. No matches only means none in the searched data;
+  never claim that no availability exists. Otherwise, use the tool's message to explain empty results.
 - If the tool returns an error, explain what needs fixing and ask the user.
 - Follow-ups: when the user changes one detail (date, cabin, passengers), search again and reuse
   the other details from earlier in the conversation. To compare dates, search each date.
@@ -164,6 +167,8 @@ def run_chat(
     contents = build_contents(request)
     user_text = user_messages_text(request)
     results: list[Result] = []
+    partial = False
+    warnings: list[str] = []
 
     try:
         for _ in range(MAX_TOOL_ROUNDS):
@@ -175,13 +180,17 @@ def run_chat(
             )
             calls = response.function_calls
             if not calls:
-                return ChatResponse(reply=response.text or "", results=results)
+                return ChatResponse(reply=response.text or "", results=results, partial=partial, warnings=warnings)
 
             contents.append(response.candidates[0].content)
             response_parts = []
             for call in calls:
                 payload, call_results = _run_tool(call, user_text)
                 results = merge_results(results, call_results)
+                partial = partial or payload.get("partial", False)
+                for warning in payload.get("warnings", []):
+                    if warning not in warnings:
+                        warnings.append(warning)
                 response_parts.append(
                     types.Part(
                         function_response=types.FunctionResponse(
@@ -201,10 +210,10 @@ def run_chat(
             logger.warning("Gemini quota exceeded: %s", error)
             return ChatResponse(reply=BUSY_REPLY, results=[])
         logger.exception("Gemini API call failed")
-        return ChatResponse(reply=UNAVAILABLE_REPLY, results=[])
+        return ChatResponse(reply=UNAVAILABLE_REPLY, results=[], partial=partial, warnings=warnings)
 
     logger.warning("Chat stopped after %d tool rounds", MAX_TOOL_ROUNDS)
-    return ChatResponse(reply=ROUND_LIMIT_REPLY, results=results)
+    return ChatResponse(reply=ROUND_LIMIT_REPLY, results=results, partial=partial, warnings=warnings)
 
 
 def user_messages_text(request: ChatRequest) -> str:

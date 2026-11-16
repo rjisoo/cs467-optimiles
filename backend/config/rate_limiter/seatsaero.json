@@ -11,8 +11,8 @@
     "limit_per_day": {
         "enabled": true,
         "max_requests": 1000,
-        "current_quota": 15,
-        "current_day": "2026-10-20",
+        "current_quota": 4,
+        "current_day": "2026-11-16",
         "reset_time": "00:00:00+00:00",
         "soft_retry": false
     },
@@ -21,5 +21,7 @@
         "max_requests": 10,
         "mode": "strict"
     },
-    "usage": {}
+    "usage": {
+        "2026-11-16": 4
+    }
 }

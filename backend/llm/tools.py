@@ -65,7 +65,8 @@ class ResultFilters(BaseModel):
 SEARCH_AWARDS_DECLARATION = {
     "name": SEARCH_AWARDS,
     "description": (
-        "Search award flight availability for one route and date. Returns the points "
+        "Search one-way award flight availability for one route and date. Round-trip "
+        "searches are unsupported. Returns the points "
         "cost, cash fees, seats and redemption value (cents per point) for each "
         "loyalty program. This is the only source of availability and prices."
     ),
@@ -75,7 +76,6 @@ SEARCH_AWARDS_DECLARATION = {
             "origin": {"type": "string", "description": "3-letter IATA airport code, e.g. ORD"},
             "destination": {"type": "string", "description": "3-letter IATA airport code, e.g. HND"},
             "departure_date": {"type": "string", "description": "Departure date, YYYY-MM-DD"},
-            "return_date": {"type": "string", "description": "Optional return date, YYYY-MM-DD"},
             "cabin": {
                 "type": "string", "enum": list(get_args(Cabin)),
                 "description": "Only set when the user explicitly requests a cabin. Omit to search all cabins.",
@@ -177,6 +177,8 @@ def run_search_tool(args: dict, user_text: str) -> tuple[dict, list[Result]]:
     payload: dict = {
         "count": len(response.results),
         "results": [result.model_dump(mode="json") for result in response.results],
+        "partial": response.partial,
+        "warnings": response.warnings,
     }
     if response.message:
         payload["message"] = response.message
@@ -189,8 +191,8 @@ def _filter_response(response: SearchResponse, filters: ResultFilters) -> Search
         return response
     kept = filters.apply(response.results)
     if kept:
-        return SearchResponse(results=kept)
-    return SearchResponse(results=[], message=(
+        return response.model_copy(update={"results": kept, "message": None})
+    return response.model_copy(update={"results": [], "message": (
         f"{len(response.results)} award options were found, but none match "
         f"{filters.describe()}."
-    ))
+    )})

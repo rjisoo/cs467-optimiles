@@ -2,6 +2,7 @@
 
 from datetime import date
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import httpx
 import pytest
@@ -21,7 +22,7 @@ from backend.llm.gemini_chat import (
 )
 from backend.llm.rate_limit import GeminiRateLimiter
 from backend.llm.tools import run_search_tool
-from backend.models import ChatMessage, ChatRequest, SearchCriteria
+from backend.models import ChatMessage, ChatRequest, SearchCriteria, SearchResponse
 from backend.search import search_awards
 
 USER_TEXT = "Business class from Chicago to Tokyo on Dec 1"
@@ -86,8 +87,13 @@ def chat(client, message=USER_TEXT, history=()):
     return run_chat(ChatRequest(message=message, history=list(history)), client, "test-model")
 
 
-def test_run_search_tool_returns_results_from_code():
-    payload, results = run_search_tool(SEARCH_ARGS, USER_TEXT)
+@pytest.mark.parametrize("extra_fields", [{}, {"return_date": None}, {"departure_date_end": "2026-12-07"}])
+def test_run_search_tool_returns_exact_date_results_from_code(monkeypatch, extra_fields):
+    search_tool = Mock(wraps=search_awards)
+    monkeypatch.setattr("backend.llm.tools.search_awards", search_tool)
+    payload, results = run_search_tool({**SEARCH_ARGS, **extra_fields}, USER_TEXT)
+    request = search_tool.call_args.args[0]
+    assert request.departure_end == request.departure_date
     expected = search_awards(criteria()).results
     assert results == expected
     assert payload["count"] == len(expected)
@@ -109,6 +115,18 @@ def test_chat_ignores_undeclared_cabins_argument():
     ungrounded = {**SEARCH_ARGS, "cabin_quote": "", "cabins": ["business"]}
     _, results = run_search_tool(ungrounded, USER_TEXT)
     assert {result.cabin for result in results} == {"economy", "business"}
+
+
+@pytest.mark.parametrize("return_date", ["2026-11-01", "2026-12-01", "2026-12-10", "not-a-date", False])
+def test_run_search_tool_rejects_return_dates_without_searching(monkeypatch, return_date):
+    provider = Mock(side_effect=AssertionError("Unsupported return dates must not search"))
+    monkeypatch.setattr("backend.search._fetch_availability", provider)
+    payload, results = run_search_tool({**SEARCH_ARGS, "return_date": return_date}, USER_TEXT)
+    assert payload["error"] == "Invalid search criteria"
+    assert payload["details"][0]["loc"] == ["return_date"]
+    assert "Only one-way searches are supported" in payload["details"][0]["msg"]
+    assert results == []
+    provider.assert_not_called()
 
 
 @pytest.mark.parametrize(("message", "cabin", "quote", "expected"), [
@@ -367,6 +385,9 @@ def test_system_prompt_includes_today():
     client.generate_content = capture
     chat(client)
     assert date.today().isoformat() in configs[0].system_instruction
+    assert "Only one-way searches are supported" in configs[0].system_instruction
+    assert "return_date" not in configs[0].tools[0].function_declarations[0].parameters_json_schema["properties"]
+    assert "departure_date_end" not in configs[0].tools[0].function_declarations[0].parameters_json_schema["properties"]
     assert configs[0].automatic_function_calling.disable is True
 
 
@@ -435,6 +456,31 @@ def test_filters_keep_the_original_no_availability_message():
     assert "no program reports 9 seats" in payload["message"]
 
 
+@pytest.mark.parametrize(("programs", "count"), [([], 2), (["United"], 1), (["Unknown"], 0)])
+def test_tool_filters_preserve_partial_coverage(monkeypatch, programs, count):
+    response = search_awards(criteria()).model_copy(update={"partial": True, "warnings": ["Page limit reached."]})
+    monkeypatch.setattr("backend.llm.tools.search_awards", lambda criteria: response)
+    payload, results = run_search_tool({**SEARCH_ARGS, "programs": programs}, USER_TEXT)
+    assert payload["count"] == len(results) == count
+    assert payload["partial"] is True
+    assert payload["warnings"] == response.warnings
+
+
+@pytest.mark.parametrize("ending", ["normal", "round_limit", "error"])
+def test_chat_preserves_tool_coverage_metadata_on_every_exit(monkeypatch, ending):
+    partial = SearchResponse(results=[], partial=True, warnings=["Page limit reached."])
+    complete = SearchResponse(results=[], warnings=["Page limit reached.", "Cached data."])
+    monkeypatch.setattr("backend.llm.tools.search_awards", Mock(side_effect=[partial, complete] * MAX_TOOL_ROUNDS))
+    calls = tool_calls_response(SEARCH_ARGS, SEARCH_ARGS)
+    final = (errors.APIError(503, {"error": {"message": "unavailable"}}) if ending == "error"
+             else text_response("Everything is complete."))
+    client = FakeClient(*([calls] * MAX_TOOL_ROUNDS if ending == "round_limit" else [calls, final]))
+    response = chat(client)
+    assert response.partial is True
+    assert response.warnings == ["Page limit reached.", "Cached data."]
+    assert response.results == []
+
+
 @pytest.mark.parametrize("bad", [{"max_points": 0}, {"programs": "United"}])
 def test_invalid_filters_are_sent_back_to_model(bad):
     payload, results = run_search_tool({**SEARCH_ARGS, **bad}, USER_TEXT)
@@ -455,7 +501,7 @@ def test_two_searches_in_one_turn_are_combined():
 def test_repeated_search_does_not_duplicate_results():
     client = FakeClient(tool_response(SEARCH_ARGS), tool_response(SEARCH_ARGS), text_response("Done."))
     response = chat(client)
-    assert response.results == search_awards(CRITERIA).results
+    assert response.results == search_awards(criteria()).results
 
 
 def test_history_is_trimmed_to_recent_non_blank_messages():

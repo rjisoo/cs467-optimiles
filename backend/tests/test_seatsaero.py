@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, Mock
 
 from pydantic import ValidationError
 
-from backend.ext_api import APIRouterError, APIStatusError, SeatsAeroAPI
+from backend.ext_api import APIRouterError, APIStatusError, APITimeout, SeatsAeroAPI
 from backend.ext_api.seatsaero_models import (
     RawCachedSearchResponse,
     RawGetTripResponse,
@@ -13,6 +13,36 @@ from backend.ext_api.seatsaero_models import (
 )
 from backend.ext_api.reward_eval import get_reward_value
 from backend.models import CachedSearchResponse
+
+
+@pytest.mark.parametrize("blocked_phase", [None, "rate_limit", "http"])
+def test_cached_search_deadline_cancels_waits_and_preserves_usage_accounting(blocked_phase):
+    api = object.__new__(SeatsAeroAPI)
+    api.base_url, api.oauth, api.default_headers = "https://provider.invalid", False, {}
+    api.client = Mock(request=AsyncMock(return_value=Mock(json=lambda: {"data": []})))
+    api.rate_limiter = Mock(request=AsyncMock())
+    api.async_record_usage = AsyncMock()
+    canceled = []
+
+    async def blocked(*args, **kwargs):
+        try:
+            await asyncio.Event().wait()
+        finally:
+            canceled.append(True)
+
+    if blocked_phase:
+        target = api.rate_limiter if blocked_phase == "rate_limit" else api.client
+        target.request.side_effect = blocked
+        with pytest.raises(APITimeout):
+            api.cached_search({"take": 500}, timeout=0.02)
+        assert canceled == [True]
+        api.async_record_usage.assert_not_awaited()
+        if blocked_phase == "rate_limit":
+            api.client.request.assert_not_awaited()
+    else:
+        assert api.cached_search({"take": 500}, timeout=1) == {"data": []}
+        api.rate_limiter.request.assert_awaited_once()
+        api.async_record_usage.assert_awaited_once_with(1)
 
 
 @pytest.mark.parametrize(

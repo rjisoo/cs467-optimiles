@@ -1,9 +1,30 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
+import { flushSync } from 'react-dom'
 import { describe, expect, it, vi } from 'vitest'
 import App from './App'
+import TripEntry from './components/TripEntry'
 import { mockAirportCatalog } from './test-airports'
 
 describe('main-page chat entry', () => {
+  it('does not submit the retained draft when cancellation immediately enables Send', () => {
+    const onSubmit = vi.fn()
+    const props = {
+      draft: { message: 'Keep this draft', origin: '', destination: '', originCodes: [], destinationCodes: [],
+        departureDate: '', adults: '1', cabins: [] },
+      onDraftChange: vi.fn(), onSubmit, fieldErrors: {}, formAttempt: 0,
+      composerOnly: true, airportStatus: 'idle' as const, onLoadAirports: vi.fn(),
+    }
+    const onCancel = vi.fn(() => flushSync(() => rerender(<TripEntry {...props} pending={false} />)))
+    const { rerender } = render(<TripEntry {...props} pending onCancel={onCancel} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel search' }))
+
+    expect(onCancel).toHaveBeenCalledOnce()
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(screen.getByRole('textbox')).toHaveValue('Keep this draft')
+    expect(screen.getByRole('button', { name: 'Send request' })).toBeEnabled()
+  })
+
   it.each([
     { action: 'Send', invalidFormAttempt: false },
     { action: 'Enter', invalidFormAttempt: false },

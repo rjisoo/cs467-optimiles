@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { validateChatResponse } from './chat-response'
 import { sendChatMessage } from './chat-api'
+import { validateSearchResponse } from './search-api'
 
 const result = {
   airline: 'AA, AS', cabin: 'economy', cash_fees_usd: 11.2, cents_per_point: null,
@@ -9,6 +10,22 @@ const result = {
 }
 
 describe('actual chat response boundary', () => {
+  it.each([{ partial: false, warnings: [] }, { partial: true, warnings: ['Some dates were not checked.'] },
+    { partial: true }, { warnings: ['Cached availability may have changed.'] }, {}])('preserves optional coverage in both envelopes %j', (coverage) => {
+    const chat = { reply: '', results: [], ...coverage }
+    const search = { message: null, results: [], ...coverage }
+    expect(validateChatResponse(chat)).toEqual(chat)
+    expect(validateSearchResponse(search)).toEqual(search)
+  })
+
+  it.each([{ partial: null }, { partial: 'true' }, { partial: 1 }, { warnings: null },
+    { warnings: 'Incomplete' }, { warnings: [7] }, { warnings: [''] }, { warnings: ['  '] }])(
+    'rejects malformed coverage in both envelopes %j', (coverage) => {
+      expect(() => validateChatResponse({ reply: '', results: [], ...coverage })).toThrow('Invalid response')
+      expect(() => validateSearchResponse({ message: null, results: [], ...coverage })).toThrow('Invalid response')
+    },
+  )
+
   it('preserves provider availability identity without inventing IDs for older results', () => {
     for (const availability_id of ['provider-123', null]) {
       expect(validateChatResponse({ reply: '', results: [{ ...result, availability_id }] }).results[0].availability_id).toBe(availability_id)

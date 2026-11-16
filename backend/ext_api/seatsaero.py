@@ -1,10 +1,12 @@
 from .api_template import APIRouterTemplate
+import asyncio
 import dotenv
 import os
 import logging
 from pydantic import ValidationError
 from . import APIRouterError, APIStatusError, APITimeout
 from .seatsaero_models import RawCachedSearchResponse, RawGetTripResponse
+from backend.utils import bridge_run
 
 logger = logging.getLogger(__name__)
 
@@ -178,13 +180,24 @@ class SeatsAeroAPI(APIRouterTemplate):
             logger.exception("Unknown API request error")
             raise
 
-    def cached_search(self, params: dict) -> dict:
+    def cached_search(self, params: dict, *, timeout: float | None = None) -> dict:
         """Synchronous wrapper for async_cached_search, submit a request to the Cached Search endpoint.
         params: Dictionary of query parameters for the search.
+        timeout: Optional total seconds, including rate-limit waits and response parsing.
         return: The response from the API.
         raises APIRouterError, APIStatusError, APITimeout.
         """
-        return self._sync_api_request(lambda: self.get("/search", params=params))
+        if timeout is None:
+            return self._sync_api_request(lambda: self.get("/search", params=params))
+
+        async def bounded_request():
+            try:
+                async with asyncio.timeout(timeout):
+                    return await self.async_cached_search(params)
+            except TimeoutError as error:
+                raise APITimeout() from error
+
+        return bridge_run(bounded_request())
 
     def get_trips(self, trip_id, params={}) -> dict:
         """Synchronous wrapper for async_get_trips, submit a request to the Get Trips endpoint.

@@ -29,6 +29,17 @@ function send(message: string, initial = false) {
 }
 
 describe('chat conversation controls', () => {
+  it('keeps partial coverage visible for empty chat results when the reply omits it', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ reply: 'No options returned.', results: [],
+      partial: true, warnings: ['Some departure dates were not checked.'] }))
+    render(<App />)
+    send('JFK to SEA December 1', true)
+    const coverage = await screen.findByRole('status', { name: 'Search coverage' })
+    expect(coverage).toHaveTextContent('Partial search results')
+    expect(coverage).toHaveTextContent('Some departure dates were not checked.')
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+  })
+
   it('renders returned Markdown inside the assistant bubble and keeps result filters independent', async () => {
     const user = userEvent.setup()
     const first = pendingRequest()

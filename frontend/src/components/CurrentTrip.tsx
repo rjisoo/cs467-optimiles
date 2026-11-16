@@ -19,7 +19,7 @@ export default function CurrentTrip({ results, criteria }: { results: ChatResult
   const sameRoute = !!criteria || results.every((row) => row.origin === first.origin && row.destination === first.destination)
   const dates = results.map((row) => row.departure_date).sort()
   const startDate = criteria?.departure_date ?? dates[0]
-  const endDate = criteria?.departure_date ?? dates[dates.length - 1]
+  const endDate = criteria ? criteria.departure_date_end ?? criteria.departure_date : dates[dates.length - 1]
   const cabins = cabinOptions.filter((option) => criteria
     ? criteria.cabins?.includes(option.key) : results.some((row) => row.cabin === option.key))
 

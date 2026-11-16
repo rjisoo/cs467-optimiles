@@ -2,7 +2,7 @@ import re
 
 import pytest
 
-from backend.models import ChatRequest, ChatResponse, SearchCriteria, SearchResponse
+from backend.models import ChatRequest, ChatResponse, SearchResponse, StructuredSearchCriteria
 
 
 def test_openapi_documents_banks_endpoint(client):
@@ -76,7 +76,7 @@ def test_openapi_covers_all_api_routes_and_resolves_references(client):
 @pytest.mark.parametrize(
     ("path", "request_model", "response_model"),
     [
-        ("/api/search", SearchCriteria, SearchResponse),
+        ("/api/search", StructuredSearchCriteria, SearchResponse),
         ("/api/chat", ChatRequest, ChatResponse),
     ],
 )
@@ -116,3 +116,20 @@ def test_cabin_is_optional_nullable_in_search_but_concrete_in_results(client):
     result_cabin = schemas["Result"]["properties"]["cabin"]
     assert result_cabin["type"] == "string"
     assert set(result_cabin["enum"]) == {"economy", "premium_economy", "business", "first"}
+
+
+def test_search_schemas_only_allow_omitted_or_null_return_date(client):
+    schemas = client.get("/openapi.json").get_json()["components"]["schemas"]
+    for name in ("SearchCriteria", "StructuredSearchCriteria"):
+        assert "return_date" not in schemas[name]["required"]
+        assert schemas[name]["properties"]["return_date"]["type"] == "null"
+
+
+def test_range_end_is_optional_nullable_and_only_declared_for_direct_search(client):
+    schemas = client.get("/openapi.json").get_json()["components"]["schemas"]
+    request = schemas["StructuredSearchCriteria"]
+    assert "departure_date_end" not in request["required"]
+    assert request["properties"]["departure_date_end"]["anyOf"] == [
+        {"format": "date", "type": "string"}, {"type": "null"},
+    ]
+    assert "departure_date_end" not in schemas["SearchCriteria"]["properties"]

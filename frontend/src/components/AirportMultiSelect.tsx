@@ -32,10 +32,16 @@ export default function AirportMultiSelect({ id, label, value, codes, airports, 
       const field = fieldRef.current?.getBoundingClientRect()
       if (!popup || !field) return
       const viewport = window.visualViewport
+      const left = (viewport?.offsetLeft ?? 0) + 8
+      const right = (viewport?.offsetLeft ?? 0) + (viewport?.width ?? document.documentElement.clientWidth) - 8
+      const width = Math.min(Math.max(field.width, 480), Math.max(0, right - left))
+      popup.style.width = `${width}px`
+      popup.style.left = `${Math.max(left, Math.min(field.left, right - width)) - field.left}px`
       const bottom = (viewport?.height ?? window.innerHeight) + (viewport?.offsetTop ?? 0)
       const below = bottom - field.bottom - 8
       const above = field.top - (viewport?.offsetTop ?? 0) - 8
-      const upward = below < 360 && above > below
+      popup.style.maxHeight = '360px'
+      const upward = below < popup.getBoundingClientRect().height && above > below
       popup.style.top = upward ? 'auto' : '100%'
       popup.style.bottom = upward ? '100%' : 'auto'
       popup.style.maxHeight = `${Math.max(0, Math.min(360, upward ? above : below))}px`
@@ -108,9 +114,9 @@ export default function AirportMultiSelect({ id, label, value, codes, airports, 
           })}
         </ul>
         <Input ref={searchRef} id={id} role="combobox" autoComplete="off" value={value}
-          placeholder={codes.length ? 'Add airport…' : 'City or airport…'}
+          placeholder={codes.length ? '' : 'City or airport…'}
           aria-haspopup="dialog" aria-expanded={open && ready} aria-controls={open && ready ? dialogId : undefined}
-          aria-invalid={!!error} aria-describedby={error ? `${id}-error` : `${id}-limit`}
+          aria-invalid={!!error} aria-describedby={error ? `${id}-error` : undefined}
           onFocus={() => setOpen(true)} onClick={() => setOpen(true)}
           onCompositionStart={() => { composing.current = true }}
           onCompositionEnd={() => { composing.current = false }}
@@ -119,7 +125,6 @@ export default function AirportMultiSelect({ id, label, value, codes, airports, 
       {open && ready && <div ref={popupRef} id={dialogId} role="dialog" aria-label={`${label} airport selection`}
         className="airport-suggestions airport-multiple-popup">
         <div className="airport-picker-toolbar">
-          <span>{codes.length}/6 selected</span>
           <button type="button" onClick={() => close(true)}>Done</button>
         </div>
         <div className="airport-multiple-options">
@@ -132,13 +137,12 @@ export default function AirportMultiSelect({ id, label, value, codes, airports, 
             <div><strong>{airport.name}</strong><span>{airport.city ? `${airport.city} · ${airport.country}` : airport.country}</span></div>
             <span className="airport-code">{airport.code}</span>
           </label>)}
-          <p role="status">{notice || (choices.length
-            ? `${choices.length} matching airports shown. Choose individual airports.`
-            : value.trim() ? 'No matching airports.' : 'Search by city, name or airport code.')}</p>
+          {(notice || !choices.length) && <p role="status">
+            {notice || (value.trim() ? 'No matching airports.' : 'Search by city, name or airport code.')}
+          </p>}
         </div>
       </div>}
     </div>
-    <span id={`${id}-limit`} className="airport-limit">Choose up to 6 airports.</span>
     {error && <span className="field-error" id={`${id}-error`}>{error}</span>}
   </div>
 }

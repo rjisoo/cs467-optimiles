@@ -9,20 +9,55 @@ const draft = {
   cabins: ['Premium economy', 'First'],
 }
 
-it('captures validated, normalized criteria independently of mutable form fields', () => {
-  const editable = { ...draft, cabins: [...draft.cabins] }
+it.each(['exact', 'custom'])('captures immutable normalized criteria with %s dates', (departureFlex) => {
+  const editable = { ...draft, departureFlex, departureDateEnd: '2026-12-07', cabins: [...draft.cabins] }
   const criteria = captureSearchCriteria(editable, testAirports)
   editable.cabins.pop()
   editable.originCodes = ['LAX']
+  editable.departureDateEnd = '2026-12-10'
   expect(criteria).toEqual({ origin: 'JFK', destination: 'SEA', departure_date: '2026-12-01',
+    ...(departureFlex === 'custom' ? { departure_date_end: '2026-12-07' } : {}),
     passengers: 2, cabins: ['premium_economy', 'first'] })
   expect(Object.isFrozen(criteria)).toBe(true)
   expect(Object.isFrozen(criteria.cabins)).toBe(true)
 })
 
 it.each([
+  ['1', '2027-05-11', '2027-05-13'], ['3', '2027-05-09', '2027-05-15'],
+  ['7', '2027-05-05', '2027-05-19'], ['14', '2027-04-28', '2027-05-26'],
+  ['28', '2027-04-14', '2027-06-09'], ['60', '2027-03-13', '2027-07-11'],
+  ['180', '2026-11-13', '2027-11-08'],
+])('captures the complete ±%s-day window without clamping', (departureFlex, start, end) => {
+  expect(captureSearchCriteria({ ...draft, departureDate: '2027-05-12', departureFlex }, testAirports))
+    .toMatchObject({ departure_date: start, departure_date_end: end })
+})
+
+it('keeps a same-day custom range compatible with the exact-date payload', () => {
+  expect(captureSearchCriteria({ ...draft, departureFlex: 'custom', departureDateEnd: draft.departureDate }, testAirports))
+    .not.toHaveProperty('departure_date_end')
+})
+
+it.each([
+  ['2028-03-01', '2028-02-29', '2028-03-02'], ['2026-12-31', '2026-12-30', '2027-01-01'],
+])('uses calendar days across leap/month/year boundaries at %s', (departureDate, start, end) => {
+  const now = new Date(`${departureDate.slice(0, 4)}-01-01T12:00:00Z`)
+  expect(captureSearchCriteria({ ...draft, departureDate, departureFlex: '1' }, testAirports, now))
+    .toMatchObject({ departure_date: start, departure_date_end: end })
+})
+
+it.each(['2026-11-11', '2027-11-10'])('checks both preset endpoints against every origin at %s', (departureDate) => {
+  expect(() => captureSearchCriteria({ ...draft, originCodes: ['JFK', 'HND'], departureDate, departureFlex: '1' },
+    testAirports, new Date('2026-11-11T01:00:00Z'))).toThrow('Invalid search criteria')
+})
+
+it.each([
   { originCodes: ['New York'] }, { destinationCodes: ['JFK'] }, { departureDate: '2026-02-30' },
   { adults: '0' }, { cabins: ['Suite'] }, { cabins: ['Economy', 'Economy'] },
+  { departureFlex: '2' }, { departureFlex: '180' },
+  { departureFlex: 'custom', departureDateEnd: '' },
+  { departureFlex: 'custom', departureDateEnd: '2027-02-30' },
+  { departureFlex: 'custom', departureDateEnd: '2026-11-30' },
+  { departureFlex: 'custom', departureDateEnd: '2027-11-12' },
 ])('rejects invalid request criteria %j', (changes) => {
   expect(() => captureSearchCriteria({ ...draft, ...changes }, testAirports)).toThrow('Invalid search criteria')
   expect(fetch).not.toHaveBeenCalled()

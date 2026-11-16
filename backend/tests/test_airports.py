@@ -1,11 +1,30 @@
 from datetime import date, datetime, timedelta
 from unittest.mock import Mock
+import zoneinfo
 
 import airportsdata
 import pytest
 
-from backend.airports import get_airport_catalog
+from backend.airports import airport_index, airport_today, get_airport_catalog
 from backend.llm.tools import run_search_tool
+
+
+def test_catalog_and_local_dates_work_without_system_timezones():
+    original_path = zoneinfo.TZPATH
+    try:
+        zoneinfo.reset_tzpath(())
+        zoneinfo.ZoneInfo.clear_cache()
+        get_airport_catalog.cache_clear()
+        airport_index.cache_clear()
+        catalog = get_airport_catalog()
+        assert len(catalog.airports) == 7884
+        assert airport_index()["CIS"].timeZone == "Pacific/Enderbury"
+        assert airport_today("CIS", datetime.fromisoformat("2026-11-01T12:00:00+00:00")) == date(2026, 11, 2)
+    finally:
+        zoneinfo.reset_tzpath(original_path)
+        zoneinfo.ZoneInfo.clear_cache()
+        get_airport_catalog.cache_clear()
+        airport_index.cache_clear()
 
 
 def test_airport_endpoint_returns_cached_catalog_without_providers(client, monkeypatch):
