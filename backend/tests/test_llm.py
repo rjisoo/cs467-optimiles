@@ -3,18 +3,23 @@
 from datetime import date
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from google.genai import errors, types
 
 from backend.llm import gemini_chat
 from backend.llm.gemini_chat import (
+    BUSY_REPLY,
+    DEFAULT_TIMEOUT_SECONDS,
     MAX_HISTORY_MESSAGES,
     MAX_TOOL_ROUNDS,
     ROUND_LIMIT_REPLY,
+    TIMEOUT_REPLY,
     UNAVAILABLE_REPLY,
     build_contents,
     run_chat,
 )
+from backend.llm.rate_limit import GeminiRateLimiter
 from backend.llm.tools import run_search_tool
 from backend.models import ChatMessage, ChatRequest, SearchCriteria
 from backend.search import search_awards
@@ -243,6 +248,83 @@ def test_api_error_gives_friendly_reply():
     response = chat(FakeClient(error))
     assert response.reply == UNAVAILABLE_REPLY
     assert response.results == []
+
+
+def test_timeout_gives_timeout_reply():
+    client = FakeClient(tool_response(SEARCH_ARGS), httpx.ReadTimeout("timed out"))
+    response = chat(client)
+    assert response.reply == TIMEOUT_REPLY
+    assert response.results == []
+
+
+def test_connection_error_gives_unavailable_reply():
+    response = chat(FakeClient(httpx.ConnectError("no route")))
+    assert response.reply == UNAVAILABLE_REPLY
+    assert response.results == []
+
+
+def test_gemini_quota_error_gives_busy_reply():
+    error = errors.APIError(429, {"error": {"message": "quota", "status": "RESOURCE_EXHAUSTED"}})
+    response = chat(FakeClient(error))
+    assert response.reply == BUSY_REPLY
+    assert response.results == []
+
+
+def test_rate_limit_skips_the_gemini_call(monkeypatch):
+    limiter = GeminiRateLimiter(per_minute=1, per_day=0)
+    assert limiter.try_acquire()
+    monkeypatch.setattr(gemini_chat, "_rate_limiter", limiter)
+    client = FakeClient(text_response("never sent"))
+    response = chat(client)
+    assert response.reply == BUSY_REPLY
+    assert client.calls == []
+
+
+def test_rate_limit_counts_every_tool_round():
+    client = FakeClient(tool_response(SEARCH_ARGS), text_response("never sent"))
+    request = ChatRequest(message=USER_TEXT)
+    limiter = GeminiRateLimiter(per_minute=1, per_day=0)
+    response = run_chat(request, client, "test-model", rate_limiter=limiter)
+    assert response.reply == BUSY_REPLY
+    assert len(client.calls) == 1
+
+
+def capture_client_options(monkeypatch):
+    """Replace genai.Client so get_client() reports the options it was built with."""
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setattr(gemini_chat.genai, "Client", lambda **kwargs: kwargs)
+
+
+@pytest.mark.parametrize(("value", "expected_ms"), [
+    ("12.5", 12500),
+    ("", int(DEFAULT_TIMEOUT_SECONDS * 1000)),
+    ("abc", int(DEFAULT_TIMEOUT_SECONDS * 1000)),
+    ("0", int(DEFAULT_TIMEOUT_SECONDS * 1000)),
+    ("-3", int(DEFAULT_TIMEOUT_SECONDS * 1000)),
+])
+def test_client_gets_a_timeout(monkeypatch, value, expected_ms):
+    capture_client_options(monkeypatch)
+    monkeypatch.setenv("GEMINI_TIMEOUT_SECONDS", value)
+    assert gemini_chat.get_client()["http_options"].timeout == expected_ms
+
+
+def test_round_limit_fits_in_the_server_timeout():
+    # Gunicorn kills requests after 120 s (deploy/launch.sh); leave room for searches.
+    assert DEFAULT_TIMEOUT_SECONDS * MAX_TOOL_ROUNDS <= 90
+
+
+def test_real_sdk_timeout_reaches_the_timeout_reply():
+    """The installed SDK raises httpx timeouts unwrapped, so run_chat can catch them."""
+
+    def time_out(request):
+        raise httpx.ReadTimeout("timed out", request=request)
+
+    http_client = httpx.Client(transport=httpx.MockTransport(time_out))
+    client = gemini_chat.genai.Client(
+        api_key="test-key", http_options=types.HttpOptions(httpx_client=http_client)
+    )
+    response = chat(client)
+    assert response.reply == TIMEOUT_REPLY
 
 
 def test_history_maps_to_gemini_roles():

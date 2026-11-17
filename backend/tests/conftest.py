@@ -9,6 +9,14 @@ os.environ.setdefault("SEATSAERO_BASE_URL", "https://seats.aero.invalid/partnera
 
 from backend import search  # noqa: E402
 from backend.app import create_app  # noqa: E402
+from backend.llm import gemini_chat  # noqa: E402
+from backend.llm.rate_limit import GeminiRateLimiter  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def unlimited_gemini_rate_limit(monkeypatch):
+    """Each test gets a fresh limiter with no limits, so chat tests don't share counts."""
+    monkeypatch.setattr(gemini_chat, "_rate_limiter", GeminiRateLimiter(per_minute=0, per_day=0))
 
 
 def seats_aero_row(source, *, origin, destination, day, **cabin_fields):

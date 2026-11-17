@@ -208,7 +208,9 @@ def build_openapi(server_url: str = "/") -> dict:
                     "Uses Gemini when a server-side API key is configured. Without a key, "
                     "returns a message that chat is not connected yet. Send earlier messages "
                     "in history for follow-ups such as a new date, cabin, program or points "
-                    "limit; results come from the searches in this request only.",
+                    "limit; results come from the searches in this request only. If Gemini "
+                    "times out, is over quota or the server's request limit is reached, the "
+                    "reply says so and results is empty.",
                     refs[ChatRequest, "validation"],
                     refs[ChatResponse, "serialization"],
                     {
