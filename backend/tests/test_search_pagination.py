@@ -50,10 +50,9 @@ def test_reuses_first_cursor_counts_raw_skip_and_deduplicates_before_mapping(pro
     assert all(0 < timeout <= 20 for timeout in timeouts) and timeouts == sorted(timeouts, reverse=True)
 
 
-@pytest.mark.parametrize("failure", [None, [], {}, {"data": None}, {"data": []}, {"data": [None]},
+@pytest.mark.parametrize("failure", [None, [], {}, {"data": None}, {"data": []},
                                     {"data": [], "hasMore": "yes"}, APIRouterError("failed"), APITimeout("slow"),
-                                    ValueError("Invalid JSON"),
-                                    {"data": [row("b"), {**row("bad"), "Date": None}], "hasMore": False}])
+                                    ValueError("Invalid JSON")])
 @pytest.mark.parametrize("later", [False, True])
 def test_first_page_failures_raise_and_later_failures_preserve_collected_rows(provider, failure, later):
     provider.side_effect = ([{"data": [row("a")], "hasMore": True, "cursor": "123"}] if later else []) + [failure]
@@ -64,6 +63,36 @@ def test_first_page_failures_raise_and_later_failures_preserve_collected_rows(pr
         with pytest.raises((APIRouterError, APITimeout)):
             REAL_FETCH(criteria())
     assert provider.call_count == (2 if later else 1)
+
+
+@pytest.mark.parametrize("invalid", [None, [], "invalid", {**row("bad"), "Date": None},
+                                    {**row("bad"), "YRemainingSeats": "invalid"},
+                                    {**row("bad"), "YAirlines": ["UA"]},
+                                    {**row("bad"), "Source": ["united"]}])
+@pytest.mark.parametrize("later", [False, True])
+def test_malformed_rows_preserve_valid_rows_on_the_same_page(provider, invalid, later):
+    provider.side_effect = ([{"data": [row("before")], "hasMore": True, "cursor": 123}] if later else []) + [
+        {"data": [row("a"), invalid, row("b")], "hasMore": False},
+    ]
+    response = REAL_FETCH(criteria())
+    assert response["data"] == ([row("before")] if later else []) + [row("a"), row("b")]
+    assert response["partial"] and len(response["warnings"]) == 1
+    assert "malformed availability" in response["warnings"][0]
+    assert provider.call_count == (2 if later else 1)
+
+
+def test_skipped_rows_advance_pagination_without_hiding_later_valid_copies(provider):
+    provider.side_effect = [
+        {"data": [row("a"), {**row("b"), "Date": None}], "hasMore": True, "cursor": 123},
+        {"data": [{**row("c"), "Route": None}], "hasMore": True, "cursor": 456},
+        {"data": [row("b"), row("c")], "hasMore": False},
+    ]
+    response = REAL_FETCH(criteria())
+    assert response["data"] == [row("a"), row("b"), row("c")]
+    assert response["partial"] and len(response["warnings"]) == 2
+    assert all("malformed availability" in warning for warning in response["warnings"])
+    assert [call.args[0]["skip"] for call in provider.call_args_list[1:]] == [2, 3]
+    assert [call.args[0]["cursor"] for call in provider.call_args_list[1:]] == [123, 123]
 
 
 def test_partial_empty_response_does_not_claim_no_awards_exist(client, provider):

@@ -12,6 +12,15 @@ REQUEST = {"origin": [" jfk ", "LGA", "ewr"], "destination": ["lhr", " CDG "],
            "departure_date": "2026-12-01", "cabins": ["economy", "business"], "passengers": 2}
 
 
+@pytest.fixture
+def provider(monkeypatch):
+    monkeypatch.setenv("SEATSAERO_TOKEN", "test-token")
+    provider = Mock()
+    monkeypatch.setattr(search, "_fetch_availability", REAL_FETCH)
+    monkeypatch.setattr(search.seatsaero_api, "cached_search", provider)
+    return provider
+
+
 @pytest.mark.parametrize(("origin", "destination", "origin_param", "destination_param"), [
     (" jfk ", " lhr ", "JFK", "LHR"),
     ([" jfk "], [" lhr "], "JFK", "LHR"),
@@ -117,23 +126,33 @@ def test_results_keep_concrete_routes_ids_cabins_and_party_filtering(client, mon
 @pytest.mark.parametrize("route", [None, {}, {"OriginAirport": "JFK"}, {"DestinationAirport": "LHR"},
                                   {"OriginAirport": ["JFK"], "DestinationAirport": "LHR"},
                                   {"OriginAirport": "JFK,LGA", "DestinationAirport": "LHR"}, "invalid"])
-def test_ambiguous_provider_routes_are_upstream_errors_not_empty_results(client, monkeypatch, seats_aero_row, route):
+@pytest.mark.parametrize("with_valid_row", [False, True])
+def test_ambiguous_provider_routes_are_skipped_with_partial_results(client, provider, seats_aero_row, route, with_valid_row):
     row = seats_aero_row("united", origin="JFK", destination="LHR", day="2026-12-01", YAvailable=True, YMileageCost="20000")
-    row["Route"] = route
-    monkeypatch.setattr(search, "_fetch_availability", lambda _: {"data": [row]})
+    invalid = {**row, "ID": "invalid-route-record", "Route": route}
+    provider.return_value = {"data": [invalid] + ([row] if with_valid_row else []), "hasMore": False}
     response = client.post("/api/search", json=REQUEST)
-    assert response.status_code == 502
-    assert response.get_json()["error"] == "Award search is unavailable right now. Please try again later."
+    assert response.status_code == 200
+    body = response.get_json()
+    assert [result["availability_id"] for result in body["results"]] == ([row["ID"]] if with_valid_row else [])
+    assert body["partial"] and any("malformed availability" in warning for warning in body["warnings"])
+    if with_valid_row:
+        assert body["message"] is None
+    else:
+        assert "search is incomplete" in body["message"]
 
 
 @pytest.mark.parametrize("route", [[], False, {"OriginAirport": False}, {"OriginAirport": 0},
                                   {"OriginAirport": []}, {"DestinationAirport": {}}])
-def test_malformed_route_values_do_not_use_singleton_fallback(client, monkeypatch, seats_aero_row, route):
+def test_malformed_route_values_do_not_use_singleton_fallback(client, provider, seats_aero_row, route):
     row = seats_aero_row("united", origin="JFK", destination="LHR", day="2026-12-01", YAvailable=True, YMileageCost="20000")
     row["Route"] = route
-    monkeypatch.setattr(search, "_fetch_availability", lambda _: {"data": [row]})
+    provider.return_value = {"data": [row], "hasMore": False}
     response = client.post("/api/search", json={**REQUEST, "origin": "JFK", "destination": "LHR"})
-    assert response.status_code == 502
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["results"] == [] and body["partial"] and body["warnings"]
+    assert "search is incomplete" in body["message"]
 
 
 @pytest.mark.parametrize(("origins", "destinations", "reported", "expected"), [

@@ -78,14 +78,20 @@ def test_unselected_routes_and_outside_dates_do_not_affect_results_or_empty_reas
                                         {"Date": "20261201"}, {"Date": "2026-12-01T00:00:00Z"},
                                         {"Date": 0}, {"Date": {}}])
 @pytest.mark.parametrize("with_valid_row", [False, True])
-def test_bad_provider_dates_fail_safely_instead_of_becoming_empty_or_partial_results(client, provider, date_fields, with_valid_row):
+def test_bad_provider_dates_are_skipped_with_partial_results(client, provider, date_fields, with_valid_row):
     invalid = row(ID="invalid-date-record")
     del invalid["Date"]
     invalid.update(date_fields)
     provider.return_value = {"data": ([row()] if with_valid_row else []) + [invalid], "hasMore": False}
     response = client.post("/api/search", json=REQUEST)
-    assert response.status_code == 502
-    assert response.get_json() == {"error": "Award search is unavailable right now. Please try again later."}
+    assert response.status_code == 200
+    body = response.get_json()
+    assert [result["availability_id"] for result in body["results"]] == ([row()["ID"]] if with_valid_row else [])
+    assert body["partial"] and any("malformed availability" in warning for warning in body["warnings"])
+    if with_valid_row:
+        assert body["message"] is None
+    else:
+        assert "search is incomplete" in body["message"]
     provider.assert_called_once()
 
 
@@ -94,7 +100,10 @@ def test_exact_date_search_does_not_invent_missing_provider_date(client, provide
     del invalid["Date"]
     provider.return_value = {"data": [invalid], "hasMore": False}
     response = client.post("/api/search", json={"origin": "JFK", "destination": "LHR", "departure_date": "2026-12-01"})
-    assert response.status_code == 502
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["results"] == [] and body["partial"] and body["warnings"]
+    assert "search is incomplete" in body["message"]
 
 
 @pytest.mark.parametrize(("cabins", "passengers", "data", "message"), [

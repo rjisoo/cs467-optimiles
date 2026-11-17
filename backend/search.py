@@ -128,7 +128,7 @@ def _empty_message(rows: list[dict], criteria: SearchCriteria) -> str:
 
 
 def _fetch_availability(criteria: SearchCriteria) -> dict:
-    """Bounded cached pages for one combined route/date window; first record ID wins."""
+    """Bounded cached pages for one combined route/date window; first valid record ID wins."""
     if not os.getenv("SEATSAERO_TOKEN"):
         raise APIRouterError("SEATSAERO_TOKEN is not set in backend/.env")
     params = {"origin_airport": ",".join(criteria.origin_codes),
@@ -150,18 +150,25 @@ def _fetch_availability(criteria: SearchCriteria) -> dict:
                 raise APITimeout()
             page = seatsaero_api.cached_search({**params, "take": take}, timeout=remaining)
             if (not isinstance(page, dict) or not isinstance(page.get("data"), list)
-                    or not all(isinstance(row, dict) for row in page["data"])
                     or not isinstance(page.get("hasMore"), bool)):
                 raise APIRouterError("Invalid availability page returned by the provider")
             new_rows, new_keys = [], set()
+            skipped_rows = 0
             for row in page["data"][:take]:
-                key = ("id", row["ID"]) if isinstance(row.get("ID"), str) and row["ID"] else (
-                    "row", json.dumps(row, sort_keys=True))
-                if key not in seen and key not in new_keys:
+                try:
+                    if not isinstance(row, dict):
+                        raise APIRouterError("Invalid availability record returned by the provider")
+                    key = ("id", row["ID"]) if isinstance(row.get("ID"), str) and row["ID"] else (
+                        "row", json.dumps(row, sort_keys=True))
+                    if key in seen or key in new_keys:
+                        continue
                     for cabin in _CABIN_PREFIX:
                         _to_result(row, one_seat, cabin)
-                    new_keys.add(key)
-                    new_rows.append(row)
+                except (APIRouterError, TypeError, ValueError):
+                    skipped_rows += 1
+                    continue
+                new_keys.add(key)
+                new_rows.append(row)
         except (*UPSTREAM_ERRORS, TypeError, ValueError) as error:
             if page_index == 0:
                 if isinstance(error, (TypeError, ValueError)):
@@ -169,6 +176,8 @@ def _fetch_availability(criteria: SearchCriteria) -> dict:
                 raise
             warnings.append("Search is incomplete. " + describe_upstream_error(error)[1])
             break
+        if skipped_rows:
+            warnings.append(f"Search skipped {skipped_rows} malformed availability records on page {page_index + 1}.")
         rows.extend(new_rows)
         seen.update(new_keys)
         received += min(len(page["data"]), take)
@@ -177,7 +186,7 @@ def _fetch_availability(criteria: SearchCriteria) -> dict:
             break
         if not page["hasMore"]:
             break
-        if not new_rows:
+        if not new_rows and not skipped_rows:
             warnings.append("Search stopped because the provider returned a non-advancing page. More cached availability may exist.")
             break
         if page_index == 0:
