@@ -17,9 +17,10 @@ The backend tests and frontend lint, tests, and build run. The workflow does not
 1. The backend tests and frontend lint, tests, and build run. Tests must pass before deployment.
 2. The deploy job builds the frontend for a release package. 
 3. Checks for github environment variables
-   - Mandatory Variables: `GEMINI_API_KEY` and `SEATSAERO_TOKEN`
+   - Mandatory secrets: `GEMINI_API_KEY`, `SEATSAERO_TOKEN`, and `DDNS_PASSWORD`
+   - Mandatory variables: `DDNS_HOST` and `DDNS_DOMAIN` (Nameserver's ddns http update url)
    - Optional Vairbales: `GEMINI_MODEL`, `SEATSAERO_BASE_URL`, `DOMAIN`, and `CERTBOT_EMAIL`
-4. Writes the application settings to a temp `.env` file and include it with the release package.
+4. Writes application settings to `.env` and DDNS credentials to `.ddns-env`; both are included in the release package.
 5. Authenticate with with github OIDC, connects with the instance and deliver the package
 6. Runs `deploy/launch.sh` on the instance. 
    - The bash script installs required packages and python dependencies, updates the application, configures Gunicorn under systemd and Nginx to serve the frontend and proxy API requests. If both `DOMAIN` and `CERTBOT_EMAIL` are set, it also configures HTTPS with Certbot.
