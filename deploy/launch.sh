@@ -20,35 +20,33 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
-# Set DDNS env file directory
+if [[ ! -f "${RELEASE_DIR}/.ddns-env" && ! -f "${ENV_DIR}/ddns-env" ]]; then
+  echo "No .ddns-env in release and no existing ${ENV_DIR}/ddns-env" >&2
+  exit 1
+fi
+
 if [[ -f "${RELEASE_DIR}/.ddns-env" ]]; then
   DDNS_ENV_FILE="${RELEASE_DIR}/.ddns-env"
 else
   DDNS_ENV_FILE="${ENV_DIR}/ddns-env"
 fi
 
-# Load DDNS Environment Variables
-if [[ -f "${DDNS_ENV_FILE}" ]]; then
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    case "$line" in
-      DDNS_HOST=*) DDNS_HOST=${line#DDNS_HOST=} ;;
-      DDNS_DOMAIN=*) DDNS_DOMAIN=${line#DDNS_DOMAIN=} ;;
-      DDNS_UPDATE_URL=*) DDNS_UPDATE_URL=${line#DDNS_UPDATE_URL=} ;;
-      DDNS_PASSWORD=*) DDNS_PASSWORD=${line#DDNS_PASSWORD=} ;;
-    esac
-  done < "${DDNS_ENV_FILE}"
+DDNS_UPDATE_INT=
+while IFS= read -r line || [[ -n "$line" ]]; do
+  case "$line" in
+    DDNS_UPDATE_INT=*) DDNS_UPDATE_INT=${line#DDNS_UPDATE_INT=} ;;
+  esac
+done < "${DDNS_ENV_FILE}"
+if [[ ! "$DDNS_UPDATE_INT" =~ ^[0-9]+$ || ! "$DDNS_UPDATE_INT" =~ [1-9] ]] \
+  || ! systemd-analyze timespan "${DDNS_UPDATE_INT}s" >/dev/null; then
+  echo "DDNS_UPDATE_INT must be a valid positive number of seconds" >&2
+  exit 1
 fi
-
-# Validate Variables
-: "${DDNS_HOST:?DDNS_HOST is not set}"
-: "${DDNS_DOMAIN:?DDNS_DOMAIN is not set}"
-: "${DDNS_UPDATE_URL:?DDNS_UPDATE_URL is not set}"
-: "${DDNS_PASSWORD:?DDNS_PASSWORD is not set}"
 
 # Set default file permissions for new files
 umask 022
 
-for path in backend/app.py backend/requirements.txt frontend/dist/index.html; do
+for path in backend/app.py backend/requirements.txt frontend/dist/index.html deploy/ddnsd.sh; do
   [[ -e "${RELEASE_DIR}/${path}" ]] || { echo "Missing ${path} in ${RELEASE_DIR}" >&2; exit 1; }
 done
 
@@ -64,9 +62,9 @@ id -u "${SERVICE_USER}" >/dev/null 2>&1 \
 # Environment variables (secrets) live outside the code tree.
 mkdir -p "${ENV_DIR}"
 
-# Install the DDNS environment file if it exists in the release directory.
-install -m 600 -o root -g root "${RELEASE_DIR}/.ddns-env" "${ENV_DIR}/ddns-env"
-
+if [[ -f "${RELEASE_DIR}/.ddns-env" ]]; then
+  install -m 600 -o root -g root "${RELEASE_DIR}/.ddns-env" "${ENV_DIR}/ddns-env"
+fi
 
 if [[ -f "${RELEASE_DIR}/.env" ]]; then
   install -m 640 -o root -g "${SERVICE_USER}" "${RELEASE_DIR}/.env" "${ENV_FILE}"
@@ -82,6 +80,7 @@ grep -q '^BACKEND_LOG_PATH=' "${ENV_FILE}" \
 mkdir -p "${APP_DIR}/backend" "${APP_DIR}/frontend" "${LOG_DIR}"
 # Grant access for the service user to the application directories and files
 chmod 755 "${APP_DIR}"
+install -m 755 -o root -g root "${RELEASE_DIR}/deploy/ddnsd.sh" "${APP_DIR}/ddnsd.sh"
 rsync -a --delete \
   --exclude '.env' --exclude '.venv' --exclude '__pycache__' --exclude 'tests' --exclude 'logs' --exclude 'instance' \
   "${RELEASE_DIR}/backend/" "${APP_DIR}/backend/"
@@ -122,6 +121,35 @@ ProtectSystem=full
 WantedBy=multi-user.target
 EOF
 
+# Creates systemd service and timer for ddnsd.sh updates
+cat > /etc/systemd/system/${APP_NAME}-ddns.service <<EOF
+[Unit]
+Description=Optimiles DDNS Service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=${APP_DIR}/ddnsd.sh ${ENV_DIR}/ddns-env
+TimeoutStartSec=180
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+EOF
+
+cat > /etc/systemd/system/${APP_NAME}-ddns.timer <<EOF
+[Unit]
+Description=Periodic Optimiles DDNS update
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=${DDNS_UPDATE_INT}s
+
+[Install]
+WantedBy=timers.target
+EOF
+
 # nginx proxy configuration
 SERVER_NAME=${DOMAIN:-_}
 cat > /etc/nginx/sites-available/${APP_NAME} <<EOF
@@ -159,8 +187,40 @@ nginx -t
 systemctl enable nginx >/dev/null
 systemctl reload nginx || systemctl restart nginx
 
+# Enable DDNS update timer
+systemctl enable ${APP_NAME}-ddns.timer >/dev/null
+systemctl restart ${APP_NAME}-ddns.timer
+
+# Start a DDNS update immediately
+systemctl start ${APP_NAME}-ddns.service
+
 if [[ -n "${DOMAIN:-}" && -n "${CERTBOT_EMAIL:-}" ]]; then
-  apt-get install -y certbot python3-certbot-nginx
+  apt-get install -y certbot python3-certbot-nginx dnsutils
+
+  if ! expected_ip=$(curl -fsS --noproxy '*' --max-time 5 \
+    -H 'Metadata-Flavor: Google' \
+    'http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip') \
+    || [[ -z "$expected_ip" ]]; then
+    echo "Could not determine the VM's external IP from GCE metadata" >&2
+    exit 1
+  fi
+
+# Ensure DNS propagation before obtaining SSL certificate
+  propagated=false
+  for attempt in $(seq 1 90); do
+    if dig +short +time=2 +tries=1 @1.1.1.1 A "$DOMAIN" | grep -Fxq "$expected_ip"; then
+      propagated=true
+      break
+    fi
+    if [[ "$attempt" -lt 90 ]]; then
+      sleep 10
+    fi
+  done
+  if [[ "$propagated" != true ]]; then
+    echo "DNS did not resolve $DOMAIN to $expected_ip before timeout" >&2
+    exit 1
+  fi
+
   certbot --nginx -d "${DOMAIN}" -m "${CERTBOT_EMAIL}" --agree-tos --non-interactive --redirect
 fi
 
@@ -180,32 +240,4 @@ if [[ "$serverHealth" = false ]]; then
   exit 1
 fi
 
-ddnsUpdate=false
-# Server IP is omited, Namecheap DDNS will use the current public IP of the server
-for _ in $(seq 1 5); do
-  # Namecheap DDNS update
-  if ! response=$(curl --fail --silent --show-error --get \
-    "${DDNS_UPDATE_URL}" \
-    --data-urlencode "host=${DDNS_HOST}" \
-    --data-urlencode "domain=${DDNS_DOMAIN}" \
-    --data-urlencode "password=${DDNS_PASSWORD}"); then
-    echo "DDNS request failed; retrying." >&2
-    sleep 2
-    continue
-  fi
-  # Parse reponse and check status
-  if success=$(printf '%s' "$response" | xmllint --noenc --nonet \
-    --xpath 'boolean(/interface-response[normalize-space(ErrCount)="0" and normalize-space(Done)="true"])' -) \
-    && [[ "$success" == "true" ]]; then
-    ddnsUpdate=true
-    break
-  fi
-  sleep 2
-done
-
-if [[ "$ddnsUpdate" = false ]]; then
-  echo "DDNS update failed for ${DDNS_DOMAIN}" >&2
-  exit 1
-fi
-echo "DDNS updated for ${DDNS_HOST}.${DDNS_DOMAIN}"
 exit 0

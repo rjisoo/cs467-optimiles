@@ -18,12 +18,14 @@ The backend tests and frontend lint, tests, and build run. The workflow does not
 2. The deploy job builds the frontend for a release package. 
 3. Checks for github environment variables
    - Mandatory secrets: `GEMINI_API_KEY`, `SEATSAERO_TOKEN`, and `DDNS_PASSWORD`
-   - Mandatory variables: `DDNS_HOST`, `DDNS_DOMAIN` (Optimiles URL), and `DDNS_UPDATE_URL` (nameserver's update URL)
+   - Mandatory variables: `DDNS_HOST`, `DDNS_DOMAIN` (registered domain), `DDNS_UPDATE_URL` (nameserver's update URL), and `DDNS_UPDATE_INT` (interval in seconds)
    - Optional Vairbales: `GEMINI_MODEL`, `SEATSAERO_BASE_URL`, `DOMAIN`, and `CERTBOT_EMAIL`
 4. Writes application settings to `.env` and DDNS credentials to `.ddns-env`; both are included in the release package.
 5. Authenticate with with github OIDC, connects with the instance and deliver the package
 6. Runs `deploy/launch.sh` on the instance. 
    - The bash script installs required packages and python dependencies, updates the application, configures Gunicorn under systemd and Nginx to serve the frontend and proxy API requests. If both `DOMAIN` and `CERTBOT_EMAIL` are set, it also configures HTTPS with Certbot.
+   - Runs a DDNS update and enables `OptiMiles-ddns.timer`. It runs after boot and repeats at `DDNS_UPDATE_INT` interval.
+   - Before Certbot, checks if the DNS record propagated, retrying up to 90 times.
 
 The deployment also needs the `GCP_WIF_PROVIDER`, `GCP_SERVICE_ACCOUNT`, `GCP_PROJECT`, `GCP_ZONE`, and `GCP_INSTANCE` secrets. See details in the `Google Cloud Configuration` Section
 

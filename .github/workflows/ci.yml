@@ -86,6 +86,7 @@ jobs:
       DDNS_HOST: ${{ vars.DDNS_HOST }}
       DDNS_DOMAIN: ${{ vars.DDNS_DOMAIN }}
       DDNS_UPDATE_URL: ${{ vars.DDNS_UPDATE_URL }}
+      DDNS_UPDATE_INT: ${{ vars.DDNS_UPDATE_INT }}
       DDNS_PASSWORD: ${{ secrets.DDNS_PASSWORD }}
       CERTBOT_EMAIL: ${{ vars.CERTBOT_EMAIL }}
       
@@ -111,7 +112,12 @@ jobs:
           : "${DDNS_HOST:?DDNS_HOST variable is not set}"
           : "${DDNS_DOMAIN:?DDNS_DOMAIN variable is not set}"
           : "${DDNS_UPDATE_URL:?DDNS_UPDATE_URL variable is not set}"
+          : "${DDNS_UPDATE_INT:?DDNS_UPDATE_INT variable is not set}"
           : "${DDNS_PASSWORD:?DDNS_PASSWORD secret is not set}"
+          if [[ ! "$DDNS_UPDATE_INT" =~ ^[0-9]+$ || ! "$DDNS_UPDATE_INT" =~ [1-9] ]]; then
+            echo "DDNS_UPDATE_INT must be a positive number of seconds" >&2
+            exit 1
+          fi
           umask 077
           {
             printf 'GEMINI_API_KEY=%s\n' "$GEMINI_API_KEY"
@@ -123,6 +129,7 @@ jobs:
             printf 'DDNS_HOST=%s\n' "$DDNS_HOST"
             printf 'DDNS_DOMAIN=%s\n' "$DDNS_DOMAIN"
             printf 'DDNS_UPDATE_URL=%s\n' "$DDNS_UPDATE_URL"
+            printf 'DDNS_UPDATE_INT=%s\n' "$DDNS_UPDATE_INT"
             printf 'DDNS_PASSWORD=%s\n' "$DDNS_PASSWORD"
           } > .ddns-env
 
