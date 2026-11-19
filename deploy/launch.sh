@@ -65,7 +65,7 @@ chown -R "${SERVICE_USER}:${SERVICE_USER}" "${APP_DIR}/instance" "${APP_DIR}/bac
 # Setup Python virtual environment and install dependencies
 python3 -m venv "${APP_DIR}/.venv"
 "${APP_DIR}/.venv/bin/pip" install --quiet --upgrade pip
-"${APP_DIR}/.venv/bin/pip" install --quiet -r "${APP_DIR}/backend/requirements.txt" gunicorn
+"${APP_DIR}/.venv/bin/pip" install --quiet -r "${APP_DIR}/backend/requirements.txt" 
 # Grant access for the service user to the virtual environment
 chmod -R a+rX "${APP_DIR}/.venv"
 
