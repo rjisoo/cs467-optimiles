@@ -22,7 +22,18 @@ _TIERS: tuple[tuple[float, ValueRating], ...] = (
     (1.0, "fair"),
 )
 
-FEES_NOT_REPORTED = "Fees not reported; actual value may be lower."
+FEES_NOT_REPORTED = "Award fees not reported in USD; actual value may be lower."
+
+
+def cents_per_point(
+    cash_fare_usd: float | None, fees_usd: float | None, points: int
+) -> float | None:
+    """Value of each point in cents (rounded to 2 places), or None without valid inputs.
+
+    Unreported fees (None) count as $0."""
+    if cash_fare_usd is None or cash_fare_usd <= 0 or points <= 0:
+        return None
+    return round((cash_fare_usd - (fees_usd or 0)) * 100 / points, 2)
 
 
 def rate_value(
@@ -36,11 +47,10 @@ def rate_value(
     Unreported fees (None) are counted as $0 and add a warning, since real fees can
     only lower the value. A null rating never carries a warning.
     """
-    if cash_fare_usd is None or cash_fare_usd <= 0 or points <= 0:
-        return None, None
-
     # Compare the rounded value so the number shown always matches the label.
-    cpp = round((cash_fare_usd - (fees_usd or 0)) * 100 / points, 2)
+    cpp = cents_per_point(cash_fare_usd, fees_usd, points)
+    if cpp is None:
+        return None, None
     rating: ValueRating = "bad"
     for minimum, tier in _TIERS:
         if cpp >= round(minimum * baseline_cents, 2):

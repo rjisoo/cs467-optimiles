@@ -63,7 +63,12 @@ Rules:
 - Passengers default to 1; mention it when you use that default.
 - If the tool returns "Missing trip details", ask the user for exactly those details.
 - Only quote numbers that appear in the tool results. Do not do your own math.
-- If cents_per_point is null, say there is no value data for that option.
+- value_rating says whether points beat paying cash: it compares cents_per_point with what a point
+  is reliably worth elsewhere. "bad" means pay cash and save the points; "fair" is about break-even;
+  "good", "great" and "exceptional" are increasingly strong uses of points. Quote value_rating,
+  cents_per_point and cash_fare_usd exactly as given, and call cash_fare_usd an estimated cash fare
+  (it may not be the same flight). Repeat any value_warning.
+- If value_rating is null, say there's no cash fare to compare for that option; never rate it yourself.
 - If cash_fees_usd or seats_available is null, say that it wasn't reported; don't guess.
 - If the tool returns partial=true, explain its warnings. No matches only means none in the searched data;
   never claim that no availability exists. Otherwise, use the tool's message to explain empty results.

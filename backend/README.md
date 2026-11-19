@@ -65,9 +65,32 @@ Set `SEATSAERO_BASE_URL` (`https://seats.aero/partnerapi`) and `SEATSAERO_TOKEN`
 `backend\.env`. The app won't start without the base URL. Without the token, searches return
 502 "Award search is unavailable".
 
-Cached search has no comparable cash fares, so `cents_per_point` remains `null`. Reported positive USD taxes are converted from cents into `cash_fees_usd`; unreported or non-USD summary fees stay `null`.
+Reported positive USD taxes are converted from cents into `cash_fees_usd`; unreported or non-USD summary fees stay `null`.
 `seats_available` is `null` when the program doesn't report a seat count; those results are kept
 for any passenger count. Tests replace the seats.aero call with canned rows (`tests/conftest.py`).
+
+## Value rating (cash fares via SerpApi)
+
+seats.aero has no cash fares, so `search.py: add_value_ratings()` looks one up per distinct
+route, date and cabin with SerpApi's Google Flights engine (`cash_fare.py`) and fills four
+`Result` fields:
+
+- `cash_fare_usd`: cheapest one-way, one-adult USD fare for that route, date and cabin. It's an
+  estimate: not necessarily the same flight as the award. Itineraries with a lower-cabin leg are
+  skipped; a higher-cabin leg (US domestic "First" on a business trip) counts.
+- `cents_per_point`: `(cash_fare_usd - cash_fees_usd) * 100 / points_cost`, rounded to 2 places.
+- `value_rating` (`value.py`): cents per point against a 1.0 cent baseline (what a point is
+  reliably worth elsewhere): `bad` below 1.0 (pay cash), `fair` 1.0+, `good` 1.3+, `great` 1.7+,
+  `exceptional` 2.5+.
+- `value_warning`: set when award fees weren't reported in USD (counted as $0, so the real value
+  may be lower).
+
+All four are `null` when there's no key, no fare, or the lookup fails; a failed lookup never
+fails the search. Set `SERPAPI_KEY` in `backend\.env`. The free plan allows 250 searches a
+month, so successful lookups are cached in memory for 6 hours and each search makes at most
+`SERPAPI_LOOKUPS_PER_SEARCH` lookups (default 4, cheapest results first; `0` turns lookups off).
+Tests never call SerpApi: `tests/conftest.py` hides the key and stubs the lookup, and
+`tests/fixtures/` holds a recorded response (key removed).
 
 ## Trip details
 
@@ -147,7 +170,9 @@ the award search service fails, hits its usage limit, or times out (mapped in
 - `errors.py`: award search failures mapped to HTTP status codes and user-facing messages
 - `openapi.py`: OpenAPI route metadata and generated model schemas
 - `templates/swagger_ui.html`: Swagger UI documentation page
-- `search.py`: `search_awards()` (stubbed with fake data) and redemption value math
+- `search.py`: `search_awards()` (seats.aero) and `add_value_ratings()`
+- `cash_fare.py`: SerpApi Google Flights cash-fare lookup (cached) and response parsing
+- `value.py`: cents per point and the bad-to-exceptional value rating
 - `chat.py`: `handle_chat()`, which delegates to the Gemini loop
 - `llm/tools.py`: the `search_awards` tool declaration and `run_search_tool()` (no Gemini imports)
 - `llm/gemini_chat.py`: Gemini client setup and the tool-calling loop
@@ -155,8 +180,7 @@ the award search service fails, hits its usage limit, or times out (mapped in
 - `llm/demo.py`: command-line demo against the real API
 - `tests/`: pytest tests
 
-Award search returns fake data for now.
-`cents_per_point` is `null` when there is no cash price to compare against.
+`cents_per_point` and `value_rating` are `null` when there is no cash fare to compare against.
 
 ## ext_api Module
 This module manages external API requests and provide configurable quota tracking and limiting
