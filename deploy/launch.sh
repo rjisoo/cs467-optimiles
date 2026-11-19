@@ -20,6 +20,9 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
+# Set default file permissions for new files
+umask 022
+
 for path in backend/app.py backend/requirements.txt frontend/dist/index.html; do
   [[ -e "${RELEASE_DIR}/${path}" ]] || { echo "Missing ${path} in ${RELEASE_DIR}" >&2; exit 1; }
 done
@@ -46,19 +49,25 @@ grep -q '^BACKEND_LOG_PATH=' "${ENV_FILE}" \
   || echo "BACKEND_LOG_PATH=${LOG_DIR}/backend.log" >> "${ENV_FILE}"
 
 # Sync code, keeping the virtualenv and the database across releases.
-mkdir -p "${APP_DIR}" "${LOG_DIR}"
+mkdir -p "${APP_DIR}/backend" "${APP_DIR}/frontend" "${LOG_DIR}"
+# Grant access for the service user to the application directories and files
+chmod 755 "${APP_DIR}"
 rsync -a --delete \
-  --exclude '.env' --exclude '.venv' --exclude '__pycache__' --exclude 'tests' --exclude 'logs' \
+  --exclude '.env' --exclude '.venv' --exclude '__pycache__' --exclude 'tests' --exclude 'logs' --exclude 'instance' \
   "${RELEASE_DIR}/backend/" "${APP_DIR}/backend/"
 rsync -a --delete "${RELEASE_DIR}/frontend/dist/" "${APP_DIR}/frontend/dist/"
 mkdir -p "${APP_DIR}/instance" "${APP_DIR}/backend/instance"
 chown -R root:root "${APP_DIR}/backend" "${APP_DIR}/frontend"
+# Grant Access for the service user to the instance and log directories
+chmod -R a+rX "${APP_DIR}/frontend/dist"
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${APP_DIR}/instance" "${APP_DIR}/backend/instance" "${LOG_DIR}"
 
 # Setup Python virtual environment and install dependencies
 python3 -m venv "${APP_DIR}/.venv"
 "${APP_DIR}/.venv/bin/pip" install --quiet --upgrade pip
-"${APP_DIR}/.venv/bin/pip" install --quiet -r "${APP_DIR}/backend/requirements.txt" gunicorn
+"${APP_DIR}/.venv/bin/pip" install --quiet -r "${APP_DIR}/backend/requirements.txt" 
+# Grant access for the service user to the virtual environment
+chmod -R a+rX "${APP_DIR}/.venv"
 
 # Create daemon service for backend
 cat > /etc/systemd/system/${APP_NAME}.service <<EOF
