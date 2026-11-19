@@ -83,7 +83,13 @@ jobs:
       SEATSAERO_TOKEN: ${{ secrets.SEATSAERO_TOKEN }}
       SEATSAERO_BASE_URL: ${{ vars.SEATSAERO_BASE_URL || 'https://seats.aero/partnerapi' }}
       DOMAIN: ${{ vars.DOMAIN }}
+      DDNS_HOST: ${{ vars.DDNS_HOST }}
+      DDNS_DOMAIN: ${{ vars.DDNS_DOMAIN }}
+      DDNS_UPDATE_URL: ${{ vars.DDNS_UPDATE_URL }}
+      DDNS_UPDATE_INT: ${{ vars.DDNS_UPDATE_INT }}
+      DDNS_PASSWORD: ${{ secrets.DDNS_PASSWORD }}
       CERTBOT_EMAIL: ${{ vars.CERTBOT_EMAIL }}
+      
     steps:
       - uses: actions/checkout@v5
 
@@ -103,6 +109,15 @@ jobs:
         run: |
           : "${GEMINI_API_KEY:?GEMINI_API_KEY secret is not set}"
           : "${SEATSAERO_TOKEN:?SEATSAERO_TOKEN secret is not set}"
+          : "${DDNS_HOST:?DDNS_HOST variable is not set}"
+          : "${DDNS_DOMAIN:?DDNS_DOMAIN variable is not set}"
+          : "${DDNS_UPDATE_URL:?DDNS_UPDATE_URL variable is not set}"
+          : "${DDNS_UPDATE_INT:?DDNS_UPDATE_INT variable is not set}"
+          : "${DDNS_PASSWORD:?DDNS_PASSWORD secret is not set}"
+          if [[ ! "$DDNS_UPDATE_INT" =~ ^[0-9]+$ || ! "$DDNS_UPDATE_INT" =~ [1-9] ]]; then
+            echo "DDNS_UPDATE_INT must be a positive number of seconds" >&2
+            exit 1
+          fi
           umask 077
           {
             printf 'GEMINI_API_KEY=%s\n' "$GEMINI_API_KEY"
@@ -110,13 +125,21 @@ jobs:
             printf 'SEATSAERO_TOKEN=%s\n' "$SEATSAERO_TOKEN"
             printf 'SEATSAERO_BASE_URL=%s\n' "$SEATSAERO_BASE_URL"
           } > .env
+          {
+            printf 'DDNS_HOST=%s\n' "$DDNS_HOST"
+            printf 'DDNS_DOMAIN=%s\n' "$DDNS_DOMAIN"
+            printf 'DDNS_UPDATE_URL=%s\n' "$DDNS_UPDATE_URL"
+            printf 'DDNS_UPDATE_INT=%s\n' "$DDNS_UPDATE_INT"
+            printf 'DDNS_PASSWORD=%s\n' "$DDNS_PASSWORD"
+          } > .ddns-env
 
       - name: Package release
         run: |
+          umask 077
           tar czf release.tgz \
             --exclude='backend/.venv' --exclude='backend/.env' --exclude='backend/tests' \
             --exclude='backend/logs' --exclude='__pycache__' \
-            backend frontend/dist deploy .env
+            backend frontend/dist deploy .env .ddns-env
 
       - uses: google-github-actions/auth@v2
         with:

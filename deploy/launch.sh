@@ -20,17 +20,40 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
+if [[ ! -f "${RELEASE_DIR}/.ddns-env" && ! -f "${ENV_DIR}/ddns-env" ]]; then
+  echo "No .ddns-env in release and no existing ${ENV_DIR}/ddns-env" >&2
+  exit 1
+fi
+
+if [[ -f "${RELEASE_DIR}/.ddns-env" ]]; then
+  DDNS_ENV_FILE="${RELEASE_DIR}/.ddns-env"
+else
+  DDNS_ENV_FILE="${ENV_DIR}/ddns-env"
+fi
+
+DDNS_UPDATE_INT=
+while IFS= read -r line || [[ -n "$line" ]]; do
+  case "$line" in
+    DDNS_UPDATE_INT=*) DDNS_UPDATE_INT=${line#DDNS_UPDATE_INT=} ;;
+  esac
+done < "${DDNS_ENV_FILE}"
+if [[ ! "$DDNS_UPDATE_INT" =~ ^[0-9]+$ || ! "$DDNS_UPDATE_INT" =~ [1-9] ]] \
+  || ! systemd-analyze timespan "${DDNS_UPDATE_INT}s" >/dev/null; then
+  echo "DDNS_UPDATE_INT must be a valid positive number of seconds" >&2
+  exit 1
+fi
+
 # Set default file permissions for new files
 umask 022
 
-for path in backend/app.py backend/requirements.txt frontend/dist/index.html; do
+for path in backend/app.py backend/requirements.txt frontend/dist/index.html deploy/ddnsd.sh; do
   [[ -e "${RELEASE_DIR}/${path}" ]] || { echo "Missing ${path} in ${RELEASE_DIR}" >&2; exit 1; }
 done
 
 # Setup OS packages and dependencies
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y python3 python3-venv python3-pip nginx rsync
+apt-get install -y python3 python3-venv python3-pip nginx rsync libxml2-utils
 
 # Create service user
 id -u "${SERVICE_USER}" >/dev/null 2>&1 \
@@ -38,6 +61,11 @@ id -u "${SERVICE_USER}" >/dev/null 2>&1 \
 
 # Environment variables (secrets) live outside the code tree.
 mkdir -p "${ENV_DIR}"
+
+if [[ -f "${RELEASE_DIR}/.ddns-env" ]]; then
+  install -m 600 -o root -g root "${RELEASE_DIR}/.ddns-env" "${ENV_DIR}/ddns-env"
+fi
+
 if [[ -f "${RELEASE_DIR}/.env" ]]; then
   install -m 640 -o root -g "${SERVICE_USER}" "${RELEASE_DIR}/.env" "${ENV_FILE}"
 elif [[ ! -f "${ENV_FILE}" ]]; then
@@ -52,6 +80,7 @@ grep -q '^BACKEND_LOG_PATH=' "${ENV_FILE}" \
 mkdir -p "${APP_DIR}/backend" "${APP_DIR}/frontend" "${LOG_DIR}"
 # Grant access for the service user to the application directories and files
 chmod 755 "${APP_DIR}"
+install -m 755 -o root -g root "${RELEASE_DIR}/deploy/ddnsd.sh" "${APP_DIR}/ddnsd.sh"
 rsync -a --delete \
   --exclude '.env' --exclude '.venv' --exclude '__pycache__' --exclude 'tests' --exclude 'logs' --exclude 'instance' \
   "${RELEASE_DIR}/backend/" "${APP_DIR}/backend/"
@@ -92,6 +121,35 @@ ProtectSystem=full
 WantedBy=multi-user.target
 EOF
 
+# Creates systemd service and timer for ddnsd.sh updates
+cat > /etc/systemd/system/${APP_NAME}-ddns.service <<EOF
+[Unit]
+Description=Optimiles DDNS Service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=${APP_DIR}/ddnsd.sh ${ENV_DIR}/ddns-env
+TimeoutStartSec=180
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+EOF
+
+cat > /etc/systemd/system/${APP_NAME}-ddns.timer <<EOF
+[Unit]
+Description=Periodic Optimiles DDNS update
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=${DDNS_UPDATE_INT}s
+
+[Install]
+WantedBy=timers.target
+EOF
+
 # nginx proxy configuration
 SERVER_NAME=${DOMAIN:-_}
 cat > /etc/nginx/sites-available/${APP_NAME} <<EOF
@@ -129,18 +187,57 @@ nginx -t
 systemctl enable nginx >/dev/null
 systemctl reload nginx || systemctl restart nginx
 
+# Enable DDNS update timer
+systemctl enable ${APP_NAME}-ddns.timer >/dev/null
+systemctl restart ${APP_NAME}-ddns.timer
+
+# Start a DDNS update immediately
+systemctl start ${APP_NAME}-ddns.service
+
 if [[ -n "${DOMAIN:-}" && -n "${CERTBOT_EMAIL:-}" ]]; then
-  apt-get install -y certbot python3-certbot-nginx
+  apt-get install -y certbot python3-certbot-nginx dnsutils
+
+  if ! expected_ip=$(curl -fsS --noproxy '*' --max-time 5 \
+    -H 'Metadata-Flavor: Google' \
+    'http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip') \
+    || [[ -z "$expected_ip" ]]; then
+    echo "Could not determine the VM's external IP from GCE metadata" >&2
+    exit 1
+  fi
+
+# Ensure DNS propagation before obtaining SSL certificate
+  propagated=false
+  for attempt in $(seq 1 90); do
+    if dig +short +time=2 +tries=1 @1.1.1.1 A "$DOMAIN" | grep -Fxq "$expected_ip"; then
+      propagated=true
+      break
+    fi
+    if [[ "$attempt" -lt 90 ]]; then
+      sleep 10
+    fi
+  done
+  if [[ "$propagated" != true ]]; then
+    echo "DNS did not resolve $DOMAIN to $expected_ip before timeout" >&2
+    exit 1
+  fi
+
   certbot --nginx -d "${DOMAIN}" -m "${CERTBOT_EMAIL}" --agree-tos --non-interactive --redirect
 fi
 
+serverHealth=false
 # Health check through nginx
 for _ in $(seq 1 15); do
   if curl -fsS http://127.0.0.1/api/health >/dev/null; then
     echo "Optimiles is up."
-    exit 0
+    serverHealth=true
+    break
   fi
   sleep 2
 done
-echo "Health check failed; see: journalctl -u ${APP_NAME} -n 50" >&2
-exit 1
+
+if [[ "$serverHealth" = false ]]; then
+  echo "Health check failed; see: journalctl -u ${APP_NAME} -n 50" >&2
+  exit 1
+fi
+
+exit 0
