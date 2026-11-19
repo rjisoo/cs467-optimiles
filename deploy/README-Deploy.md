@@ -18,7 +18,7 @@ The backend tests and frontend lint, tests, and build run. The workflow does not
 2. The deploy job builds the frontend for a release package. 
 3. Checks for github environment variables
    - Mandatory secrets: `GEMINI_API_KEY`, `SEATSAERO_TOKEN`, and `DDNS_PASSWORD`
-   - Mandatory variables: `DDNS_HOST` and `DDNS_DOMAIN` (Nameserver's ddns http update url)
+   - Mandatory variables: `DDNS_HOST`, `DDNS_DOMAIN` (Optimiles URL), and `DDNS_UPDATE_URL` (nameserver's update URL)
    - Optional Vairbales: `GEMINI_MODEL`, `SEATSAERO_BASE_URL`, `DOMAIN`, and `CERTBOT_EMAIL`
 4. Writes application settings to `.env` and DDNS credentials to `.ddns-env`; both are included in the release package.
 5. Authenticate with with github OIDC, connects with the instance and deliver the package

@@ -33,6 +33,7 @@ if [[ -f "${DDNS_ENV_FILE}" ]]; then
     case "$line" in
       DDNS_HOST=*) DDNS_HOST=${line#DDNS_HOST=} ;;
       DDNS_DOMAIN=*) DDNS_DOMAIN=${line#DDNS_DOMAIN=} ;;
+      DDNS_UPDATE_URL=*) DDNS_UPDATE_URL=${line#DDNS_UPDATE_URL=} ;;
       DDNS_PASSWORD=*) DDNS_PASSWORD=${line#DDNS_PASSWORD=} ;;
     esac
   done < "${DDNS_ENV_FILE}"
@@ -41,6 +42,7 @@ fi
 # Validate Variables
 : "${DDNS_HOST:?DDNS_HOST is not set}"
 : "${DDNS_DOMAIN:?DDNS_DOMAIN is not set}"
+: "${DDNS_UPDATE_URL:?DDNS_UPDATE_URL is not set}"
 : "${DDNS_PASSWORD:?DDNS_PASSWORD is not set}"
 
 # Set default file permissions for new files
@@ -183,9 +185,9 @@ ddnsUpdate=false
 for _ in $(seq 1 5); do
   # Namecheap DDNS update
   response=$(curl --fail --silent --show-error --get \
-    ${DDNS_DOMAIN} \
+    "${DDNS_UPDATE_URL}" \
     --data-urlencode "host=${DDNS_HOST}" \
-    --data-urlencode "domain=${DOMAIN}" \
+    --data-urlencode "domain=${DDNS_DOMAIN}" \
     --data-urlencode "password=${DDNS_PASSWORD}")
   # Parse reponse and check status
   if success=$(printf '%s' "$response" | xmllint --noenc --nonet \
@@ -198,8 +200,8 @@ for _ in $(seq 1 5); do
 done
 
 if [[ "$ddnsUpdate" = false ]]; then
-  echo "DDNS update failed for ${DOMAIN}" >&2
+  echo "DDNS update failed for ${DDNS_DOMAIN}" >&2
   exit 1
 fi
-echo "DDNS updated for ${DDNS_HOST}.${DOMAIN}"
+echo "DDNS updated for ${DDNS_HOST}.${DDNS_DOMAIN}"
 exit 0

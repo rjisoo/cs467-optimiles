@@ -85,6 +85,7 @@ jobs:
       DOMAIN: ${{ vars.DOMAIN }}
       DDNS_HOST: ${{ vars.DDNS_HOST }}
       DDNS_DOMAIN: ${{ vars.DDNS_DOMAIN }}
+      DDNS_UPDATE_URL: ${{ vars.DDNS_UPDATE_URL }}
       DDNS_PASSWORD: ${{ secrets.DDNS_PASSWORD }}
       CERTBOT_EMAIL: ${{ vars.CERTBOT_EMAIL }}
       
@@ -109,6 +110,7 @@ jobs:
           : "${SEATSAERO_TOKEN:?SEATSAERO_TOKEN secret is not set}"
           : "${DDNS_HOST:?DDNS_HOST variable is not set}"
           : "${DDNS_DOMAIN:?DDNS_DOMAIN variable is not set}"
+          : "${DDNS_UPDATE_URL:?DDNS_UPDATE_URL variable is not set}"
           : "${DDNS_PASSWORD:?DDNS_PASSWORD secret is not set}"
           umask 077
           {
@@ -120,6 +122,7 @@ jobs:
           {
             printf 'DDNS_HOST=%s\n' "$DDNS_HOST"
             printf 'DDNS_DOMAIN=%s\n' "$DDNS_DOMAIN"
+            printf 'DDNS_UPDATE_URL=%s\n' "$DDNS_UPDATE_URL"
             printf 'DDNS_PASSWORD=%s\n' "$DDNS_PASSWORD"
           } > .ddns-env
 
