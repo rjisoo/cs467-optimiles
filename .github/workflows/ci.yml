@@ -83,7 +83,11 @@ jobs:
       SEATSAERO_TOKEN: ${{ secrets.SEATSAERO_TOKEN }}
       SEATSAERO_BASE_URL: ${{ vars.SEATSAERO_BASE_URL || 'https://seats.aero/partnerapi' }}
       DOMAIN: ${{ vars.DOMAIN }}
+      DDNS_HOST: ${{ vars.DDNS_HOST }}
+      DDNS_DOMAIN: ${{ vars.DDNS_DOMAIN }}
+      DDNS_PASSWORD: ${{ secrets.DDNS_PASSWORD }}
       CERTBOT_EMAIL: ${{ vars.CERTBOT_EMAIL }}
+      
     steps:
       - uses: actions/checkout@v5
 
