@@ -184,11 +184,15 @@ ddnsUpdate=false
 # Server IP is omited, Namecheap DDNS will use the current public IP of the server
 for _ in $(seq 1 5); do
   # Namecheap DDNS update
-  response=$(curl --fail --silent --show-error --get \
+  if ! response=$(curl --fail --silent --show-error --get \
     "${DDNS_UPDATE_URL}" \
     --data-urlencode "host=${DDNS_HOST}" \
     --data-urlencode "domain=${DDNS_DOMAIN}" \
-    --data-urlencode "password=${DDNS_PASSWORD}")
+    --data-urlencode "password=${DDNS_PASSWORD}"); then
+    echo "DDNS request failed; retrying." >&2
+    sleep 2
+    continue
+  fi
   # Parse reponse and check status
   if success=$(printf '%s' "$response" | xmllint --noenc --nonet \
     --xpath 'boolean(/interface-response[normalize-space(ErrCount)="0" and normalize-space(Done)="true"])' -) \
