@@ -16,7 +16,8 @@ export type ChatResult = {
   seats_available: number | null
 }
 
-export type ChatResponse = { reply: string; results: ChatResult[] }
+export type SearchCoverage = { partial?: boolean; warnings?: string[] }
+export type ChatResponse = { reply: string; results: ChatResult[] } & SearchCoverage
 
 function invalid(path: string): never {
   throw new Error(`Invalid response at ${path}`)
@@ -51,7 +52,20 @@ function nullableCpp(value: unknown, path: string): number | null {
 export function validateChatResponse(input: unknown): ChatResponse {
   const response = record(input, 'response')
   if (typeof response.reply !== 'string') invalid('reply')
-  return { reply: response.reply, results: validateResults(response.results) }
+  return { reply: response.reply, results: validateResults(response.results), ...validateSearchCoverage(response) }
+}
+
+export function validateSearchCoverage(response: Record<string, unknown>): SearchCoverage {
+  const coverage: SearchCoverage = {}
+  if (response.partial !== undefined) {
+    if (typeof response.partial !== 'boolean') invalid('partial')
+    coverage.partial = response.partial
+  }
+  if (response.warnings !== undefined) {
+    if (!Array.isArray(response.warnings)) invalid('warnings')
+    coverage.warnings = response.warnings.map((warning, index) => text(warning, `warnings[${index}]`))
+  }
+  return coverage
 }
 
 export function validateResults(input: unknown): ChatResult[] {

@@ -7,9 +7,10 @@ from flask import Flask, abort, jsonify, redirect, render_template, request, url
 from pydantic import ValidationError
 from werkzeug.exceptions import HTTPException
 
+from backend.airports import get_airport_catalog
 from backend.chat import handle_chat
 from backend.errors import UPSTREAM_ERRORS, describe_upstream_error
-from backend.models import ChatRequest, SearchCriteria
+from backend.models import ChatRequest, StructuredSearchCriteria
 from backend.openapi import build_openapi
 from backend.search import get_availability_trips, search_awards
 from backend.ext_api.reward_eval import get_banks
@@ -56,9 +57,13 @@ def create_app() -> Flask:
     def health():
         return jsonify(status="ok")
 
+    @app.get("/api/airports")
+    def airports():
+        return jsonify(get_airport_catalog().model_dump(exclude_none=True))
+
     @app.post("/api/search")
     def search():
-        criteria = SearchCriteria.model_validate(_json_body())
+        criteria = StructuredSearchCriteria.model_validate(_json_body())
         return jsonify(search_awards(criteria).model_dump(mode="json"))
 
     @app.get("/banks")

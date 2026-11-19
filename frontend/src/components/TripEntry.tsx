@@ -8,13 +8,20 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
 import Icon from './Icon'
-import { cabinChoices, type TripField, type TripFieldErrors } from '../lib/trip-validation'
+import AirportMultiSelect from './AirportMultiSelect'
+import type { AirportCatalog } from '../services/airports'
+import { cabinChoices, tripDepartureBounds, type TripField, type TripFieldErrors } from '../lib/trip-validation'
+import { departureFlexDays, departureWindow, isExactDate } from '../lib/trip-date'
 
 export type TripDraft = {
   message: string
   origin: string
   destination: string
+  originCodes: string[]
+  destinationCodes: string[]
   departureDate: string
+  departureFlex?: string
+  departureDateEnd?: string
   adults: string
   cabins: string[]
 }
@@ -28,6 +35,9 @@ type TripEntryProps = {
   pending?: boolean
   onCancel?: () => void
   composerOnly?: boolean
+  airportCatalog?: AirportCatalog
+  airportStatus: 'idle' | 'loading' | 'ready' | 'failed'
+  onLoadAirports: () => void
 }
 
 function TripEntry({
@@ -39,10 +49,17 @@ function TripEntry({
   pending = false,
   onCancel,
   composerOnly = false,
+  airportCatalog,
+  airportStatus,
+  onLoadAirports,
 }: TripEntryProps) {
   const messageRef = useRef<HTMLTextAreaElement>(null)
   const actionRef = useRef<HTMLButtonElement>(null)
   const formRef = useRef<HTMLFormElement>(null)
+  const airports = airportCatalog?.airports ?? []
+  const bounds = tripDepartureBounds(draft, airports)
+  const flexibility = draft.departureFlex ?? 'exact'
+  const dateWindow = departureWindow(draft.departureDate, flexibility, draft.departureDateEnd)
 
   useLayoutEffect(() => {
     if (formAttempt > 0) {
@@ -53,8 +70,7 @@ function TripEntry({
   function errorProps(field: TripField) {
     return {
       'aria-invalid': !!fieldErrors[field],
-      'aria-describedby': fieldErrors[field] ? `${field}-error`
-        : field === 'origin' || field === 'destination' ? 'airport-code-help' : undefined,
+      'aria-describedby': fieldErrors[field] ? `${field}-error` : undefined,
     }
   }
 
@@ -198,7 +214,10 @@ function TripEntry({
             type={pending ? 'button' : 'submit'}
             aria-label={pending ? 'Cancel search' : 'Send request'}
             disabled={!pending && !draft.message.trim()}
-            onClick={pending ? onCancel : undefined}
+            onClick={pending ? (event) => {
+              event.preventDefault()
+              onCancel?.()
+            } : undefined}
           >
             {pending ? 'Cancel search' : <Icon name="arrowUp" />}
           </Button>
@@ -217,7 +236,9 @@ function TripEntry({
             ref={formRef}
             className="entry-card details-entry"
             aria-labelledby="form-title"
+            aria-describedby="form-modes"
             noValidate
+            onFocusCapture={() => { if (airportStatus === 'idle') onLoadAirports() }}
             onSubmit={(event) => {
               event.preventDefault()
               if (!pending) {
@@ -225,80 +246,100 @@ function TripEntry({
               }
             }}
           >
-            <h2 id="form-title">
-              <span className="section-icon"><Icon name="search" /></span>
-              Enter trip details
-            </h2>
-            <p id="form-modes">One-way, exact dates for now. Round-trip and flexible dates come later.</p>
-            <p id="airport-code-help">Enter three-letter airport codes (JFK, SEA). Airport lookup comes later.</p>
+            <div className="form-heading">
+              <h2 id="form-title">
+                <span className="section-icon"><Icon name="search" /></span>
+                Enter trip details
+              </h2>
+              <p id="form-modes">One-way awards on an exact date or within a departure range.</p>
+            </div>
+            {airportStatus === 'loading' && <p className="catalog-notice" role="status">Loading airport list…</p>}
+            {airportStatus === 'failed' && <div className="catalog-notice">
+              <p role="alert">Could not load the airport list. Your entries are retained.</p>
+              <Button type="button" onClick={onLoadAirports}>Retry airport list</Button>
+            </div>}
             <p role="status" className="visually-hidden">
               {Object.keys(fieldErrors).length ? 'Check the highlighted trip fields.' : ''}
             </p>
-            <div className="trip-fields route-fields">
-              <div className="trip-field">
-                <Label htmlFor="origin">From</Label>
-                <Input
-                  id="origin"
-                  type="text"
-                  placeholder="Airport code, e.g. JFK"
-                  value={draft.origin}
-                  {...errorProps('origin')}
-                  onChange={(event) => onDraftChange({ ...draft, origin: event.target.value })}
-                />
-                {fieldError('origin')}
+            <div className={`search-fields${flexibility === 'custom' ? ' custom-search' : ''}`}>
+              <div className="trip-fields route-fields" aria-busy={airportStatus === 'loading'}>
+                {(['origin', 'destination'] as const).map((field) => (
+                  <AirportMultiSelect key={field} id={field} label={field === 'origin' ? 'From' : 'To'}
+                    value={draft[field]} codes={draft[`${field}Codes`]}
+                    airports={airports} ready={airportStatus === 'ready'} error={fieldErrors[field]}
+                    onChange={(value, selected) => onDraftChange({
+                      ...draft, [field]: value, [`${field}Codes`]: selected,
+                    })} />
+                ))}
               </div>
-              <div className="trip-field">
-                <Label htmlFor="destination">To</Label>
-                <Input
-                  id="destination"
-                  type="text"
-                  placeholder="Airport code, e.g. SEA"
-                  value={draft.destination}
-                  {...errorProps('destination')}
-                  onChange={(event) => onDraftChange({ ...draft, destination: event.target.value })}
-                />
-                {fieldError('destination')}
-              </div>
-            </div>
-            <div className="trip-fields detail-fields">
-              <Label htmlFor="trip-type">
-                Trip type
-                <NativeSelect id="trip-type" defaultValue="one-way" aria-describedby="form-modes">
-                  <NativeSelectOption value="one-way">One-way</NativeSelectOption>
-                  <NativeSelectOption value="round-trip" disabled>Round-trip (later)</NativeSelectOption>
-                </NativeSelect>
-              </Label>
-              <div className="trip-field">
-                <Label htmlFor="departure-date">Departure date</Label>
-                <Input
-                  id="departure-date"
-                  type="date"
-                  value={draft.departureDate}
-                  {...errorProps('departureDate')}
-                  onChange={(event) => onDraftChange({ ...draft, departureDate: event.target.value })}
-                />
-                {fieldError('departureDate')}
-              </div>
-              <div className="trip-field">
-                <Label htmlFor="adults">Adults</Label>
-                <NativeSelect
-                  id="adults"
-                  value={draft.adults}
-                  {...errorProps('adults')}
-                  onChange={(event) => onDraftChange({ ...draft, adults: event.target.value })}
-                >
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((count) => (
-                    <NativeSelectOption key={count} value={count}>
-                      {count} {count === 1 ? 'adult' : 'adults'}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-                {fieldError('adults')}
-              </div>
+              <fieldset className="date-section">
+                <legend className="visually-hidden">Dates &amp; travelers</legend>
+                <div className={`trip-fields detail-fields${flexibility === 'custom' ? ' custom-date-range' : ''}`}>
+                  <div className="trip-field">
+                    <Label htmlFor="departure-date">{flexibility === 'custom' ? 'Earliest departure' : 'Departure date'}</Label>
+                    <Input
+                      id="departure-date"
+                      type="date"
+                      min={bounds && typeof bounds !== 'string' ? bounds.min : undefined}
+                      max={bounds && typeof bounds !== 'string' ? bounds.max : undefined}
+                      value={draft.departureDate}
+                      {...errorProps('departureDate')}
+                      onChange={(event) => onDraftChange({ ...draft, departureDate: event.target.value,
+                        ...(flexibility === 'custom' && !draft.departureDateEnd
+                          ? { departureDateEnd: event.target.value } : {}),
+                      })}
+                    />
+                    {fieldError('departureDate')}
+                  </div>
+                  {flexibility === 'custom' && <div className="trip-field">
+                    <Label htmlFor="departure-date-end">Latest departure</Label>
+                    <Input id="departure-date-end" type="date" value={draft.departureDateEnd ?? ''}
+                      min={bounds && typeof bounds !== 'string' ? bounds.min : undefined}
+                      max={bounds && typeof bounds !== 'string' ? bounds.max : undefined}
+                      {...errorProps('departureDateEnd')}
+                      onChange={(event) => onDraftChange({ ...draft, departureDateEnd: event.target.value })} />
+                    {fieldError('departureDateEnd')}
+                  </div>}
+                  <div className="trip-field">
+                    <Label htmlFor="departure-flex">Date flexibility</Label>
+                    <NativeSelect id="departure-flex" value={flexibility} {...errorProps('departureFlex')}
+                      onChange={(event) => onDraftChange({ ...draft, departureFlex: event.target.value,
+                        ...(event.target.value === 'custom' && !draft.departureDateEnd
+                          ? { departureDateEnd: draft.departureDate } : {}),
+                      })}>
+                      <NativeSelectOption value="exact">Exact date</NativeSelectOption>
+                      {departureFlexDays.map((days) => (
+                        <NativeSelectOption key={days} value={String(days)}>± {days}d</NativeSelectOption>
+                      ))}
+                      <NativeSelectOption value="custom">Select custom range</NativeSelectOption>
+                    </NativeSelect>
+                    {fieldError('departureFlex')}
+                  </div>
+                  <div className="trip-field">
+                    <Label htmlFor="adults">Adults</Label>
+                    <NativeSelect
+                      id="adults"
+                      value={draft.adults}
+                      {...errorProps('adults')}
+                      onChange={(event) => onDraftChange({ ...draft, adults: event.target.value })}
+                    >
+                      {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((count) => (
+                        <NativeSelectOption key={count} value={count}>
+                          {count} {count === 1 ? 'adult' : 'adults'}
+                        </NativeSelectOption>
+                      ))}
+                    </NativeSelect>
+                    {fieldError('adults')}
+                  </div>
+                </div>
+                {flexibility !== 'exact' && isExactDate(dateWindow.start) && isExactDate(dateWindow.end) && (
+                  <p className="departure-window" role="status">Departure window: {dateWindow.start} through {dateWindow.end}, inclusive.</p>
+                )}
+              </fieldset>
             </div>
             <div className="form-end">
               <fieldset className="cabin-choices">
-                <legend>Cabin <span>· choose one or more</span></legend>
+                <legend>Cabin</legend>
                 <div className="cabin-options">
                   {cabinChoices.map((cabin) => (
                     <Label key={cabin} htmlFor={`cabin-${cabin.replaceAll(' ', '-')}`}>
@@ -316,7 +357,7 @@ function TripEntry({
                 {fieldError('cabins')}
               </fieldset>
               <div className="form-footer">
-                <Button className="trip-action" type="submit" disabled={pending}>
+                <Button className="trip-action" type="submit" disabled={pending || airportStatus === 'loading' || airportStatus === 'failed'}>
                   <Icon name="search" />
                   Search awards
                 </Button>

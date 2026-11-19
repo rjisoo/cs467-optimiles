@@ -1,5 +1,5 @@
 from datetime import date
-from unittest.mock import Mock
+from unittest.mock import ANY, Mock
 
 import pytest
 
@@ -109,6 +109,38 @@ def test_all_cabins_apply_party_size_and_ignore_unavailable_or_invalid_prices(mo
     assert [(r.cabin, r.seats_available) for r in results] == [("first", None)]
 
 
+@pytest.mark.parametrize("cabins", [
+    ["premium_economy", "first"], ["economy", "business"],
+    ["economy", "premium_economy", "business", "first"],
+])
+def test_selected_cabins_use_one_fetch_and_keep_provider_ids(monkeypatch, seats_aero_row, cabins):
+    row = seats_aero_row("united", origin="SFO", destination="NRT", day="2026-12-01")
+    for prefix in "YWJF":
+        row.update({f"{prefix}Available": True, f"{prefix}MileageCost": "25000"})
+    fetch = Mock(return_value={"data": [row], "hasMore": False})
+    monkeypatch.setattr(search, "_fetch_availability", fetch)
+    request = criteria(cabins=cabins)
+    results = search_awards(request).results
+    fetch.assert_called_once_with(request)
+    assert [result.cabin for result in results] == cabins
+    assert {result.availability_id for result in results} == {row["ID"]}
+
+
+def test_empty_subset_message_excludes_unrequested_cabins():
+    response = search_awards(criteria(cabins=["premium_economy", "first"]))
+    assert response.results == []
+    assert response.message == (
+        "No premium economy or first award seats from SFO to NRT on 2026-12-01. "
+        "Other cabins have availability."
+    )
+    response = search_awards(criteria(cabins=["business", "first"], passengers=5))
+    assert response.results == []
+    assert response.message == (
+        "Business or first award seats exist from SFO to NRT on 2026-12-01, "
+        "but no program reports 5 seats available."
+    )
+
+
 def test_unknown_source_falls_back_to_raw_key(monkeypatch, seats_aero_row):
     row = seats_aero_row(
         "newprogram", origin="SFO", destination="NRT", day="2026-12-01",
@@ -176,16 +208,17 @@ def test_unpriced_cabins_do_not_claim_other_availability(monkeypatch, seats_aero
 
 def test_sends_route_and_date_to_seats_aero(monkeypatch):
     monkeypatch.setenv("SEATSAERO_TOKEN", "test-token")
-    cached_search = Mock(return_value={"data": []})
+    cached_search = Mock(return_value={"data": [], "hasMore": False})
     monkeypatch.setattr(search.seatsaero_api, "cached_search", cached_search)
-    assert REAL_FETCH(criteria()) == {"data": []}
+    assert REAL_FETCH(criteria()) == {"data": [], "partial": False, "warnings": []}
     cached_search.assert_called_once_with(
         {
             "origin_airport": "SFO",
             "destination_airport": "NRT",
             "start_date": "2026-12-01",
             "end_date": "2026-12-01",
-        }
+            "take": 500,
+        }, timeout=ANY,
     )
 
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { arrivalDayOffset, formatUpdatedAt, isExactDate } from './trip-date'
+import { arrivalDayOffset, departureDateBounds, formatUpdatedAt, isExactDate, validateDepartureDate } from './trip-date'
 
 describe('exact calendar dates', () => {
   it.each(['2028-02-29', '2000-02-29', '2026-12-31', '0099-01-01'])('accepts %s', (value) => {
@@ -48,5 +48,35 @@ describe('trip time presentation', () => {
   it('keeps missing and invalid update times unreported', () => {
     expect(formatUpdatedAt(null)).toBe('Not reported')
     expect(formatUpdatedAt('invalid')).toBe('Not reported')
+  })
+})
+
+describe('departure-airport date horizon', () => {
+  it('uses each origin timezone at the same instant with inclusive today and day 365', () => {
+    const now = new Date('2026-11-11T07:30:00Z')
+    expect(departureDateBounds('America/Los_Angeles', now)).toEqual({ min: '2026-11-10', max: '2027-11-10' })
+    expect(departureDateBounds('Asia/Tokyo', now)).toEqual({ min: '2026-11-11', max: '2027-11-11' })
+    expect(validateDepartureDate('2026-11-10', 'America/Los_Angeles', now)).toBeUndefined()
+    expect(validateDepartureDate('2027-11-10', 'America/Los_Angeles', now)).toBeUndefined()
+    expect(validateDepartureDate('2026-11-09', 'America/Los_Angeles', now)).toMatch(/today or later/)
+    expect(validateDepartureDate('2027-11-11', 'America/Los_Angeles', now)).toMatch(/within 365 days/)
+    expect(validateDepartureDate('2026-11-10', 'Asia/Tokyo', now)).toMatch(/today or later/)
+  })
+
+  it.each([
+    ['2027-03-01T12:00:00Z', '2028-02-29'], ['2028-02-29T12:00:00Z', '2029-02-28'],
+    ['2026-12-31T12:00:00Z', '2027-12-31'], ['2026-03-08T12:00:00Z', '2027-03-08'],
+  ])('advances calendar days through year/leap/DST boundaries at %s', (instant, max) => {
+    expect(departureDateBounds('America/New_York', new Date(instant))).toMatchObject({ max })
+  })
+
+  it('rechecks local midnight and rejects unknown timezones and invalid dates without browser fallback', () => {
+    expect(departureDateBounds('America/New_York', new Date('2026-11-11T04:59:59Z'))).toMatchObject({ min: '2026-11-10' })
+    expect(departureDateBounds('America/New_York', new Date('2026-11-11T05:00:00Z'))).toMatchObject({ min: '2026-11-11' })
+    for (const zone of [undefined, 'Unknown/Timezone', '+09:00']) {
+      expect(validateDepartureDate('2026-11-11', zone, new Date('2026-11-11T12:00:00Z'))).toMatch(/timezone must be confirmed/)
+    }
+    expect(departureDateBounds('UTC', new Date('invalid'))).toMatch(/current date could not be checked/)
+    expect(validateDepartureDate('2026-02-30', 'UTC', new Date())).toMatch(/valid departure date/)
   })
 })

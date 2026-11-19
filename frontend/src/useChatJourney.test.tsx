@@ -17,7 +17,7 @@ describe('chat request lifecycle', () => {
     vi.mocked(fetch).mockReturnValueOnce(request.promise)
     const { result } = renderHook(useChatJourney)
     act(() => result.current.submit('form'))
-    expect(result.current.fieldErrors.origin).toBe('Enter a departure airport.')
+    expect(result.current.fieldErrors.origin).toBe('Choose at least one departure airport.')
     act(() => result.current.submit('chat'))
     expect(fetch).not.toHaveBeenCalled()
 

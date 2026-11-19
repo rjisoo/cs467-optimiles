@@ -38,12 +38,62 @@
   background: transparent;
 }
 
-.details-entry h2 {
-  margin-bottom: 4px;
+.form-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px var(--space-2);
+}
+
+.form-heading h2,
+.form-heading p {
+  margin: 0;
+}
+
+.details-entry {
+  --font-input: 1rem;
+  --font-small: .8125rem;
+  --font-caption: .75rem;
+}
+
+.details-entry > p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.catalog-notice {
+  margin-top: var(--space-1);
+  padding: var(--space-2);
+  border-radius: var(--radius-control);
+  background: var(--color-accent-surface);
+}
+
+.search-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  align-items: start;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.search-fields.custom-search {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+}
+
+.date-section {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.date-section .departure-window {
+  margin: var(--space-1) 0 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .entry-card p,
-.cabin-choices legend span,
 .form-footer > span {
   color: var(--color-text-muted);
   font-size: var(--font-small);
@@ -102,7 +152,6 @@
   display: grid;
   align-items: start;
   gap: var(--space-2);
-  margin-top: var(--space-2);
 }
 
 .route-fields {
@@ -110,7 +159,11 @@
 }
 
 .detail-fields {
-  grid-template-columns: 1fr 1.2fr 0.8fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) minmax(5.5rem, .6fr);
+}
+
+.custom-date-range {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(11.5rem, 1.2fr) minmax(5.5rem, .6fr);
 }
 
 .trip-fields > label,
@@ -133,11 +186,13 @@
 }
 
 .form-end {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: var(--space-3);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--space-2);
   margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
 }
 
 .cabin-choices {
@@ -165,6 +220,7 @@
   border: 1px solid var(--color-control-border);
   border-radius: var(--radius-control);
   font-weight: 500;
+  cursor: pointer;
 }
 
 .cabin-options [data-slot="checkbox"] {
@@ -276,31 +332,55 @@
 
 /* Reflow against the form's available width, including when embedded in another page. */
 
-@container trip-entry (width <= 44rem) {
-  .form-end {
-    flex-direction: column;
-    gap: var(--space-2);
+@container trip-entry (width <= 70rem) {
+  .search-fields.custom-search {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 
-  .form-footer {
-    align-self: flex-end;
+  .custom-date-range {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container trip-entry (width <= 58rem) {
+  .search-fields,
+  .search-fields.custom-search {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
 @container trip-entry (width <= 36rem) {
+  .form-end {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cabin-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container trip-entry (width <= 30rem) {
   .trip-fields {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .form-footer {
-    align-items: flex-start;
-    align-self: stretch;
+    align-items: stretch;
+  }
+
+  .form-footer .trip-action {
+    width: 100%;
   }
 }
 
 /* At very narrow widths or enlarged text, reserve a bottom row for Send. */
 
 @container trip-entry (width <= 12rem) {
+  .cabin-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .composer-row textarea {
     min-height: calc(2 * var(--control-min-height) + 3 * var(--space-2));
     padding-inline: var(--space-2);

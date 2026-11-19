@@ -3,9 +3,11 @@ import { describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { validateTripFields } from './lib/trip-validation'
 import useChatJourney from './useChatJourney'
+import { mockAirportCatalog, testAirports } from './test-airports'
 
 const validDraft = {
   message: '', origin: 'JFK', destination: 'SEA', departureDate: '2026-12-01', adults: '1', cabins: ['Economy'],
+  originCodes: ['JFK'], destinationCodes: ['SEA'],
 }
 
 describe('structural trip validation', () => {
@@ -21,22 +23,23 @@ describe('structural trip validation', () => {
   })
 
   it.each(['1', '9'])('allows the product adult boundary %s without claiming provider support', (adults) => {
-    expect(validateTripFields({ ...validDraft, message: '', adults })).toEqual({})
+    expect(validateTripFields({ ...validDraft, message: '', adults }, testAirports)).toEqual({})
   })
 
-  it('rejects whitespace, equal normalized endpoints, impossible dates and unknown cabin labels', () => {
-    expect(validateTripFields({ ...validDraft, origin: '  ' })).toHaveProperty('origin')
-    expect(validateTripFields({ ...validDraft, message: '', origin: ' ord ', destination: 'ORD',
-      departureDate: '2026-02-29', cabins: ['Sleeper'] })).toEqual({
-      destination: 'Choose a different arrival airport.', departureDate: 'Enter a valid date including the year.',
+  it('rejects impossible dates and unknown cabin labels', () => {
+    expect(validateTripFields({ ...validDraft,
+      departureDate: '2026-02-29', cabins: ['Sleeper'] }, testAirports)).toEqual({
+      departureDate: 'Enter a valid date including the year.',
       cabins: 'Choose from the listed cabins.',
     })
   })
 
   it('submits a structurally valid route directly without a demo gate', async () => {
+    mockAirportCatalog()
     vi.mocked(fetch).mockResolvedValueOnce(Response.json({ message: null, results: [] }))
     const { result } = renderHook(useChatJourney)
-    act(() => result.current.setDraft({ ...validDraft, destination: 'LHR' }))
+    await act(async () => result.current.loadAirports())
+    act(() => result.current.setDraft({ ...validDraft, destinationCodes: ['LHR'] }))
     await act(async () => result.current.submit('form'))
     expect(result.current.fieldErrors).toEqual({})
     expect(fetch).toHaveBeenCalledWith('/api/search', expect.objectContaining({
@@ -44,19 +47,14 @@ describe('structural trip validation', () => {
     }))
   })
 
-  it.each(['New York', 'JFK1', 'JF', '123', 'ＪＦＫ'])('rejects non-code airport input %s', (airport) => {
-    expect(validateTripFields({ ...validDraft, origin: airport, destination: airport })).toMatchObject({
-      origin: expect.stringContaining('three-letter airport code'), destination: expect.stringContaining('three-letter airport code'),
-    })
-  })
-
 })
 
 describe('field error recovery', () => {
-  it('shows errors together, focuses on submit, rechecks corrections and resets without searching', () => {
+  it('shows errors together, focuses on submit, rechecks corrections and resets without searching', async () => {
+    mockAirportCatalog()
     render(<App />)
-    const origin = screen.getByRole('textbox', { name: 'From' })
-    const destination = screen.getByRole('textbox', { name: 'To' })
+    const origin = screen.getByRole('combobox', { name: 'From' })
+    const destination = screen.getByRole('combobox', { name: 'To' })
     const date = screen.getByLabelText('Departure date')
     const message = screen.getByRole('textbox', { name: 'Your trip request' })
     const economy = screen.getByRole('checkbox', { name: 'Economy' })
@@ -64,33 +62,35 @@ describe('field error recovery', () => {
     fireEvent.change(message, { target: { value: 'Keep this request' } })
     fireEvent.change(origin, { target: { value: ' ' } })
     expect(origin).not.toHaveAttribute('aria-invalid', 'true')
-    fireEvent.click(search)
+    await act(async () => fireEvent.click(search))
     expect(origin).toHaveFocus()
-    expect(origin).toHaveAccessibleDescription('Enter a departure airport.')
-    expect(destination).toHaveAccessibleDescription('Enter an arrival airport.')
+    expect(origin).toHaveAccessibleDescription('Choose at least one departure airport.')
+    expect(destination).toHaveAccessibleDescription('Choose at least one arrival airport.')
     expect(date).toHaveAccessibleDescription('Enter a departure date.')
-    expect(economy).toHaveAccessibleDescription('Choose at least one cabin.')
+    expect(economy).not.toHaveAttribute('aria-invalid', 'true')
     fireEvent.change(origin, { target: { value: ' ord ' } })
+    fireEvent.keyDown(origin, { key: 'Enter' })
     expect(origin).toHaveFocus()
     expect(origin).not.toHaveAttribute('aria-invalid', 'true')
     fireEvent.click(search)
     expect(destination).toHaveFocus()
     fireEvent.change(destination, { target: { value: 'ORD' } })
-    expect(destination).toHaveAccessibleDescription('Choose a different arrival airport.')
+    fireEvent.keyDown(destination, { key: 'Enter' })
+    expect(destination).toHaveAccessibleDescription('Departure and arrival airports must not overlap.')
     origin.focus()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove ORD from departure airports' }))
     fireEvent.change(origin, { target: { value: 'SEA' } })
+    fireEvent.keyDown(origin, { key: 'Enter' })
     expect(destination).not.toHaveAttribute('aria-invalid', 'true')
     expect(origin).toHaveFocus()
     fireEvent.click(search)
     expect(date).toHaveFocus()
     fireEvent.change(date, { target: { value: '2027-04-08' } })
-    fireEvent.click(search)
-    expect(economy).toHaveFocus()
-    fireEvent.click(economy)
+    expect(date).not.toHaveAttribute('aria-invalid', 'true')
     expect(economy).not.toHaveAttribute('aria-invalid', 'true')
     expect(message).toHaveValue('Keep this request')
-    expect(origin).toHaveValue('SEA')
-    expect(fetch).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Remove SEA from departure airports' })).toBeVisible()
+    expect(fetch).toHaveBeenCalledExactlyOnceWith('/api/airports')
     fireEvent.click(screen.getByRole('button', { name: 'New trip' }))
     expect(origin).toHaveValue('')
     expect(origin).not.toHaveAttribute('aria-invalid', 'true')

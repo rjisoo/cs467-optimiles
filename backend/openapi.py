@@ -2,6 +2,7 @@
 
 from pydantic.json_schema import models_json_schema
 
+from backend.airports import AirportCatalog
 from backend.errors import UPSTREAM_STATUS_MESSAGES
 from backend.models import (
     CachedSearchResponse,
@@ -10,6 +11,7 @@ from backend.models import (
     GetTripResponse,
     SearchCriteria,
     SearchResponse,
+    StructuredSearchCriteria,
 )
 
 
@@ -74,11 +76,13 @@ def build_openapi(server_url: str = "/") -> dict:
     refs, definitions = models_json_schema(
         [
             (SearchCriteria, "validation"),
+            (StructuredSearchCriteria, "validation"),
             (ChatRequest, "validation"),
             (SearchResponse, "serialization"),
             (ChatResponse, "serialization"),
             (CachedSearchResponse, "serialization"),
             (GetTripResponse, "serialization"),
+            (AirportCatalog, "serialization"),
         ],
         ref_template="#/components/schemas/{model}",
     )
@@ -183,20 +187,51 @@ def build_openapi(server_url: str = "/") -> dict:
                     },
                 }
             },
+            "/api/airports": {
+                "get": {
+                    "summary": "List the versioned airport reference catalog",
+                    "description": "Worldwide individual IATA airports with IANA timezones. "
+                    "Reference identity does not establish provider coverage. No provider request is made.",
+                    "responses": {
+                        "200": {
+                            "description": "Versioned airport catalog",
+                            "content": {"application/json": {"schema": refs[AirportCatalog, "serialization"]}},
+                        },
+                        "500": _error_response("Catalog unavailable", "Internal server error"),
+                    },
+                }
+            },
             "/api/search": {
                 "post": _post_operation(
                     "Search award flights",
-                    "Airport codes are trimmed and uppercased. Origin and destination must "
-                    "differ; return_date must be on or after departure_date. Omit cabin or "
-                    "send null to search all available cabins; a supplied cabin filters results. When no flights "
-                    "match, results is empty and message says why.",
-                    refs[SearchCriteria, "validation"],
+                    "origin and destination each accept one IATA code or 1–6 distinct codes. "
+                    "Airport codes are trimmed, uppercased and checked against /api/airports. "
+                    "Selections must not overlap. departure_date_end is optional; omitted or null "
+                    "means departure_date. The ordered range includes both endpoints. "
+                    "Both endpoints must be between every origin's local "
+                    "today and today +365 days, inclusive, using one validation instant. "
+                    "Only one-way searches are supported; return_date must be omitted or null. Supply cabin for "
+                    "one class or cabins for 1–4 distinct alternatives, never both. Omit both "
+                    "or send null to search all available cabins. Searches retrieve up to three "
+                    "cached pages of 500 records, at most 1500 raw records and 20 seconds per award search. "
+                    "Pages reuse the first cursor and advance skip by raw records received; repeated "
+                    "IDs are deduplicated. No per-day, per-route or per-cabin fan-out is used. "
+                    "Limits, non-advancing pages and later-page failures return collected results "
+                    "with partial=true and plain-text warnings. First-page failures use existing errors. "
+                    "Results retain concrete routes, reported dates and availability IDs. "
+                    "Out-of-range rows are excluded; malformed usable dates/routes reject the page, "
+                    "using upstream errors for the first page or partial reporting after earlier valid pages. "
+                    "Chat still uses one airport per endpoint and one departure date. When no flights match, "
+                    "results is empty and message says why; partial empty results do not establish absence. "
+                    "Even complete pagination does not guarantee provider coverage or current availability.",
+                    refs[StructuredSearchCriteria, "validation"],
                     refs[SearchResponse, "serialization"],
                     {
                         "origin": "SFO",
                         "destination": "NRT",
                         "departure_date": "2026-12-01",
-                        "cabin": "business",
+                        "departure_date_end": "2026-12-07",
+                        "cabins": ["premium_economy", "business"],
                         "passengers": 2,
                     },
                     _UPSTREAM_RESPONSES,
@@ -210,7 +245,8 @@ def build_openapi(server_url: str = "/") -> dict:
                     "in history for follow-ups such as a new date, cabin, program or points "
                     "limit; results come from the searches in this request only. If Gemini "
                     "times out, is over quota or the server's request limit is reached, the "
-                    "reply says so and results is empty.",
+                    "reply says so and results is empty. partial and warnings aggregate "
+                    "search coverage across tool calls independently of the model's reply.",
                     refs[ChatRequest, "validation"],
                     refs[ChatResponse, "serialization"],
                     {

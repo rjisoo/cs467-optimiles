@@ -94,8 +94,8 @@ export default function Conversation({ turns, lastActionId, pending, onRetry }: 
             <section key={turn.id} className="conversation-turn" aria-label={`Search ${turn.id}`}>
               <p className="conversation-request">{turn.request}</p>
               {turn.source === 'form' && <p className="availability-list-note">
-                Searches cached availability from Seats.aero; only the first provider page is checked.
-                Results may be incomplete. No results does not mean no awards exist.
+                Searches cached availability from Seats.aero within request limits; coverage is not exhaustive.
+                No results does not mean no awards exist.
               </p>}
               <div className="conversation-assistant">
                 <span><Icon name="aircraft" /></span>

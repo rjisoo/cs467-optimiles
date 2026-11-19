@@ -38,6 +38,8 @@ function SearchResults({ response, message }: Props) {
   const tableHeading = useRef<HTMLHeadingElement>(null)
   const rows = sortSummaries(summaries.filter((row) => cabins.some((cabin) => row.cabins[cabin])
     && dates.includes(row.departure_date) && programs.includes(row.program)), sort)
+  const warnings = response.warnings?.length ? response.warnings : response.partial
+    ? ['Search coverage is incomplete. Results may not include all available awards.'] : []
 
   function changeSort(field: SummarySort['field'], cabin?: ChatCabin) {
     const reverse = sort.field === field && sort.cabin === cabin && sort.direction === 'asc'
@@ -66,6 +68,10 @@ function SearchResults({ response, message }: Props) {
       <section className="conversation-message-bubble" aria-label="Assistant message">
         {message}{answer}
       </section>
+      {warnings.length > 0 && <section role="status" aria-label="Search coverage" className="availability-list-note">
+        {response.partial && <strong>Partial search results</strong>}
+        {warnings.map((warning, index) => <p key={index}>{warning}</p>)}
+      </section>}
       {summaries.length > 0 && <>
         <section aria-label="Daily award options" className="availability-daily-options">
           <div className="availability-section-heading toolbar">

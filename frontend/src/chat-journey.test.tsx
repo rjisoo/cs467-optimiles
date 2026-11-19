@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { mockAirportCatalog } from './test-airports'
 
 const offer = {
   airline: 'AA, AS', cabin: 'economy', cash_fees_usd: 11.2, cents_per_point: null,
@@ -28,6 +29,17 @@ function send(message: string, initial = false) {
 }
 
 describe('chat conversation controls', () => {
+  it('keeps partial coverage visible for empty chat results when the reply omits it', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ reply: 'No options returned.', results: [],
+      partial: true, warnings: ['Some departure dates were not checked.'] }))
+    render(<App />)
+    send('JFK to SEA December 1', true)
+    const coverage = await screen.findByRole('status', { name: 'Search coverage' })
+    expect(coverage).toHaveTextContent('Partial search results')
+    expect(coverage).toHaveTextContent('Some departure dates were not checked.')
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+  })
+
   it('renders returned Markdown inside the assistant bubble and keeps result filters independent', async () => {
     const user = userEvent.setup()
     const first = pendingRequest()
@@ -116,12 +128,18 @@ describe('chat conversation controls', () => {
   })
 
   it.each(['chat', 'form'])('reaches returned results through %s and prevents competing submissions', async (source) => {
+    if (source === 'form') mockAirportCatalog()
     const request = pendingRequest()
     render(<App />)
     if (source === 'chat') send('JFK to SEA December 1', true)
     else {
-      fireEvent.change(screen.getByRole('textbox', { name: 'From' }), { target: { value: 'JFK' } })
-      fireEvent.change(screen.getByRole('textbox', { name: 'To' }), { target: { value: 'SEA' } })
+      const origin = screen.getByRole('combobox', { name: 'From' })
+      await act(async () => origin.focus())
+      vi.mocked(fetch).mockClear()
+      fireEvent.change(origin, { target: { value: 'JFK' } })
+      fireEvent.keyDown(origin, { key: 'Enter' })
+      fireEvent.change(screen.getByRole('combobox', { name: 'To' }), { target: { value: 'SEA' } })
+      fireEvent.keyDown(screen.getByRole('combobox', { name: 'To' }), { key: 'Enter' })
       fireEvent.change(screen.getByLabelText('Departure date'), { target: { value: '2026-12-01' } })
       fireEvent.change(screen.getByRole('combobox', { name: 'Adults' }), { target: { value: '2' } })
       fireEvent.click(screen.getByRole('checkbox', { name: 'Economy' }))
