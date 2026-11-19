@@ -20,6 +20,29 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
+# Set DDNS env file directory
+if [[ -f "${RELEASE_DIR}/.ddns-env" ]]; then
+  DDNS_ENV_FILE="${RELEASE_DIR}/.ddns-env"
+else
+  DDNS_ENV_FILE="${ENV_DIR}/ddns-env"
+fi
+
+# Load DDNS Environment Variables
+if [[ -f "${DDNS_ENV_FILE}" ]]; then
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case "$line" in
+      DDNS_HOST=*) DDNS_HOST=${line#DDNS_HOST=} ;;
+      DDNS_DOMAIN=*) DDNS_DOMAIN=${line#DDNS_DOMAIN=} ;;
+      DDNS_PASSWORD=*) DDNS_PASSWORD=${line#DDNS_PASSWORD=} ;;
+    esac
+  done < "${DDNS_ENV_FILE}"
+fi
+
+# Validate Variables
+: "${DDNS_HOST:?DDNS_HOST is not set}"
+: "${DDNS_DOMAIN:?DDNS_DOMAIN is not set}"
+: "${DDNS_PASSWORD:?DDNS_PASSWORD is not set}"
+
 # Set default file permissions for new files
 umask 022
 
@@ -30,7 +53,7 @@ done
 # Setup OS packages and dependencies
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y python3 python3-venv python3-pip nginx rsync
+apt-get install -y python3 python3-venv python3-pip nginx rsync libxml2-utils
 
 # Create service user
 id -u "${SERVICE_USER}" >/dev/null 2>&1 \
@@ -38,6 +61,11 @@ id -u "${SERVICE_USER}" >/dev/null 2>&1 \
 
 # Environment variables (secrets) live outside the code tree.
 mkdir -p "${ENV_DIR}"
+
+# Install the DDNS environment file if it exists in the release directory.
+install -m 600 -o root -g root "${RELEASE_DIR}/.ddns-env" "${ENV_DIR}/ddns-env"
+
+
 if [[ -f "${RELEASE_DIR}/.env" ]]; then
   install -m 640 -o root -g "${SERVICE_USER}" "${RELEASE_DIR}/.env" "${ENV_FILE}"
 elif [[ ! -f "${ENV_FILE}" ]]; then
@@ -134,13 +162,44 @@ if [[ -n "${DOMAIN:-}" && -n "${CERTBOT_EMAIL:-}" ]]; then
   certbot --nginx -d "${DOMAIN}" -m "${CERTBOT_EMAIL}" --agree-tos --non-interactive --redirect
 fi
 
+serverHealth=false
 # Health check through nginx
 for _ in $(seq 1 15); do
   if curl -fsS http://127.0.0.1/api/health >/dev/null; then
     echo "Optimiles is up."
-    exit 0
+    serverHealth=true
+    break
   fi
   sleep 2
 done
-echo "Health check failed; see: journalctl -u ${APP_NAME} -n 50" >&2
-exit 1
+
+if [[ "$serverHealth" = false ]]; then
+  echo "Health check failed; see: journalctl -u ${APP_NAME} -n 50" >&2
+  exit 1
+fi
+
+ddnsUpdate=false
+# Server IP is omited, Namecheap DDNS will use the current public IP of the server
+for _ in $(seq 1 5); do
+  # Namecheap DDNS update
+  response=$(curl --fail --silent --show-error --get \
+    ${DDNS_DOMAIN} \
+    --data-urlencode "host=${DDNS_HOST}" \
+    --data-urlencode "domain=${DOMAIN}" \
+    --data-urlencode "password=${DDNS_PASSWORD}")
+  # Parse reponse and check status
+  if success=$(printf '%s' "$response" | xmllint --noenc --nonet \
+    --xpath 'boolean(/interface-response[normalize-space(ErrCount)="0" and normalize-space(Done)="true"])' -) \
+    && [[ "$success" == "true" ]]; then
+    ddnsUpdate=true
+    break
+  fi
+  sleep 2
+done
+
+if [[ "$ddnsUpdate" = false ]]; then
+  echo "DDNS update failed for ${DOMAIN}" >&2
+  exit 1
+fi
+echo "DDNS updated for ${DDNS_HOST}.${DOMAIN}"
+exit 0
