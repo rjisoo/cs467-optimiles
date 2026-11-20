@@ -2,9 +2,15 @@ import { isExactDate } from '../lib/trip-date'
 import type { SearchCriteria } from './search-api'
 
 export type ChatCabin = 'economy' | 'premium_economy' | 'business' | 'first'
+export type ValueRating = 'bad' | 'fair' | 'good' | 'great' | 'exceptional'
 
 export type ChatResult = {
   availability_id?: string | null
+  source?: string | null
+  search_passengers?: number | null
+  cash_fare_usd?: number | null
+  value_rating?: ValueRating | null
+  value_warning?: string | null
   airline: string
   cabin: ChatCabin
   cash_fees_usd: number | null
@@ -61,10 +67,25 @@ function nullableNumber(value: unknown, path: string, integer = false): number |
   return value == null ? null : number(value, path, integer)
 }
 
-function nullableCpp(value: unknown, path: string): number | null {
-  if (value == null) return null
-  if (typeof value !== 'number' || !Number.isFinite(value)) return invalid(path)
-  return value
+function nullableCpp(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function valueFields(row: Record<string, unknown>): Partial<ChatResult> {
+  const fields: Partial<ChatResult> = {}
+  if (row.source !== undefined) fields.source = typeof row.source === 'string' && /^[a-z][a-z0-9_]*$/.test(row.source)
+    ? row.source : null
+  if (row.search_passengers !== undefined) fields.search_passengers = typeof row.search_passengers === 'number'
+    && Number.isSafeInteger(row.search_passengers) && row.search_passengers >= 1 && row.search_passengers <= 9
+    ? row.search_passengers : null
+  if (row.cash_fare_usd !== undefined) fields.cash_fare_usd = typeof row.cash_fare_usd === 'number'
+    && Number.isFinite(row.cash_fare_usd) && row.cash_fare_usd > 0 && row.cash_fare_usd <= Number.MAX_SAFE_INTEGER / 100
+    ? row.cash_fare_usd : null
+  if (row.value_rating !== undefined) fields.value_rating = typeof row.value_rating === 'string'
+    && ['bad', 'fair', 'good', 'great', 'exceptional'].includes(row.value_rating) ? row.value_rating as ValueRating : null
+  if (row.value_warning !== undefined) fields.value_warning = typeof row.value_warning === 'string' && row.value_warning.trim()
+    ? row.value_warning : null
+  return fields
 }
 
 export function validateChatResponse(input: unknown): ChatResponse {
@@ -171,9 +192,11 @@ export function validateResults(input: unknown): ChatResult[] {
       || !/^[A-Za-z0-9_-]{1,200}$/.test(row.availability_id))) invalid(`${path}.availability_id`)
     return {
       ...(row.availability_id === undefined ? {} : { availability_id: row.availability_id as string | null }),
+      ...valueFields(row),
       airline: text(row.airline, `${path}.airline`), cabin: cabin as ChatCabin,
-      cash_fees_usd: nullableNumber(row.cash_fees_usd, `${path}.cash_fees_usd`),
-      cents_per_point: nullableCpp(row.cents_per_point, `${path}.cents_per_point`),
+      cash_fees_usd: typeof row.cash_fees_usd === 'number' && Number.isFinite(row.cash_fees_usd) && row.cash_fees_usd >= 0
+        ? row.cash_fees_usd : null,
+      cents_per_point: nullableCpp(row.cents_per_point),
       departure_date: departureDate, destination, origin,
       points_cost: number(row.points_cost, `${path}.points_cost`, true),
       program: text(row.program, `${path}.program`),

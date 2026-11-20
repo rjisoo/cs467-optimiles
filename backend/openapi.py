@@ -224,10 +224,12 @@ def build_openapi(server_url: str = "/") -> dict:
                     "Chat still uses one airport per endpoint and one departure date. When no flights match, "
                     "results is empty and message says why; partial empty results do not establish absence. "
                     "Even complete pagination does not guarantee provider coverage or current availability. "
-                    "Value fields (cash_fare_usd, cents_per_point, value_rating, value_warning) come from "
-                    "an estimated Google Flights cash fare (SerpApi), looked up for at most "
+                    "cash_fare_usd is an estimated Google Flights cash fare (SerpApi), looked up for at most "
                     "SERPAPI_LOOKUPS_PER_SEARCH distinct route/date/cabin groups (default 4, cheapest "
-                    "points first); they are null when no fare was looked up or found.",
+                    "points first); it is null when no fare was looked up or found. Summary minimum points "
+                    "and fees may belong to different flights, so cents_per_point and value_rating remain null. "
+                    "Exact-trip value requires matched trip points and verified USD fees. source and "
+                    "search_passengers preserve booking-program identity and requested seat requirements.",
                     refs[StructuredSearchCriteria, "validation"],
                     refs[SearchResponse, "serialization"],
                     {

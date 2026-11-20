@@ -18,12 +18,12 @@ type Props = {
 
 const statusText = {
   pending: 'Searching award options…',
-  success: 'Response received.',
+  success: null,
   canceled: 'Canceled. Stopped waiting; draft and earlier results retained.',
   failed: 'Request failed. This does not mean no awards exist. Draft and earlier results retained.',
 }
 
-function turnStatus(turn: SearchTurn): string {
+function turnStatus(turn: SearchTurn): string | null {
   if (turn.status === 'failed' && turn.error) {
     return turn.error
   }
@@ -72,6 +72,7 @@ export default function Conversation({ turns, lastActionId, pending, onRetry, on
   const following = useRef(true)
   const [hasNewResults, setHasNewResults] = useState(false)
   const lastAction = turns.find((turn) => turn.id === lastActionId) ?? turns[turns.length - 1]
+  const lastStatus = lastAction ? turnStatus(lastAction) : null
 
   useLayoutEffect(() => {
     const element = scroller.current
@@ -131,14 +132,11 @@ export default function Conversation({ turns, lastActionId, pending, onRetry, on
           const chat = turn.response && 'reply' in turn.response ? turn.response : undefined
           const canRetry = (turn.status === 'failed' && chat?.failure?.retryable !== false) || turn.status === 'canceled'
           const message = turn.response && ('reply' in turn.response ? turn.response.reply : turn.response.message)
+          const status = turnStatus(turn)
 
           return (
             <section key={turn.id} className="conversation-turn" aria-label={`Search ${turn.id}`}>
               <p className="conversation-request">{turn.request}</p>
-              {turn.source === 'form' && <p className="availability-list-note">
-                Searches cached availability from Seats.aero within request limits; coverage is not exhaustive.
-                No results does not mean no awards exist.
-              </p>}
               <div className="conversation-assistant">
                 <span><Icon name="aircraft" /></span>
                 <strong>OptiMiles</strong>
@@ -151,12 +149,12 @@ export default function Conversation({ turns, lastActionId, pending, onRetry, on
                   message={message ? (turn.source === 'chat'
                     ? <MarkdownMessage>{message}</MarkdownMessage> : <p>{message}</p>) : undefined}
                 />
-              ) : (
+              ) : status ? (
                 <div className="conversation-response">
-                  <p>{turnStatus(turn)}</p>
+                  <p>{status}</p>
                   {turn.status === 'pending' && <progress aria-label="Searching awards" />}
                 </div>
-              )}
+              ) : null}
               {canRetry && <Button disabled={pending} onClick={() => onRetry(turn)}>
                 {turn.status === 'failed' ? 'Retry' : 'Search again'}
               </Button>}
@@ -167,10 +165,10 @@ export default function Conversation({ turns, lastActionId, pending, onRetry, on
           )
         })}
       </div>
-      <div className="conversation-feedback toolbar">
-        <p role="status">{turnStatus(lastAction)}</p>
+      {(lastStatus || hasNewResults) && <div className="conversation-feedback toolbar">
+        {lastStatus && <p role="status">{lastStatus}</p>}
         {hasNewResults && <Button onClick={showNewResults}>New results</Button>}
-      </div>
+      </div>}
     </>
   )
 }

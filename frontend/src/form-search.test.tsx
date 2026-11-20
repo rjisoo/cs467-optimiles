@@ -109,7 +109,7 @@ it.each([
   fireEvent.click(retry)
   const row = await screen.findByRole('row', { name: /American AAdvantage/ })
   expect(vi.mocked(fetch).mock.calls[2][1]?.body).toBe(vi.mocked(fetch).mock.calls[1][1]?.body)
-  expect(row).toHaveTextContent('$0.00 USD fees')
+  expect(row).toHaveTextContent('Minimum fees: $0.00 USD')
   expect(screen.getByRole('region', { name: 'Current trip' })).toHaveTextContent(summary)
   if (flexibility === 'custom') expect(screen.getByRole('region', { name: 'Current trip' })).toHaveTextContent('Mon, Dec 7')
   fireEvent.click(within(row).getByRole('button', { name: 'View trips' }))

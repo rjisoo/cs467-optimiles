@@ -14,6 +14,7 @@ from backend.llm.gemini_chat import (
     DEFAULT_TIMEOUT_SECONDS,
     MAX_HISTORY_MESSAGES,
     MAX_TOOL_ROUNDS,
+    OVERLOADED_REPLY,
     ROUND_LIMIT_REPLY,
     TIMEOUT_REPLY,
     UNAVAILABLE_REPLY,
@@ -275,10 +276,24 @@ def test_tool_rounds_are_capped():
 
 
 def test_api_error_gives_friendly_reply():
-    error = errors.APIError(503, {"error": {"message": "overloaded", "status": "UNAVAILABLE"}})
+    error = errors.APIError(500, {"error": {"message": "internal error", "status": "INTERNAL"}})
     response = chat(FakeClient(error))
     assert response.reply == UNAVAILABLE_REPLY
     assert response.results == []
+
+
+def test_overload_is_retryable_without_a_traceback(caplog):
+    error = errors.ServerError(503, {"error": {"message": "high demand", "status": "UNAVAILABLE"}})
+    client = FakeClient(error)
+    response = chat(client)
+    assert response.reply == OVERLOADED_REPLY
+    assert response.status == "failed"
+    assert response.failure.code == "model_unavailable"
+    assert response.failure.retryable
+    assert len(client.calls) == 1
+    record = next(record for record in caplog.records if "HTTP 503" in record.message)
+    assert record.levelname == "WARNING"
+    assert record.exc_info is None
 
 
 def test_timeout_gives_timeout_reply():

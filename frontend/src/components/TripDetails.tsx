@@ -2,10 +2,11 @@ import { useId, useRef, useState } from 'react'
 import { Tabs } from 'radix-ui'
 import type { ChatCabin } from '../services/chat-response'
 import type { FlightTrip, TripDetailsResponse } from '../services/trip-details'
-import { cabinOptions } from '../services/availability-presentation'
+import { cabinOptions, tripValueKey, verifiedTripFees, type ValueEntry } from '../services/availability-presentation'
 import { arrivalDayOffset, formatUpdatedAt } from '../lib/trip-date'
 import AvailabilityPagination from './AvailabilityPagination'
 import Icon from './Icon'
+import AwardValue from './AwardValue'
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from './ui/dialog'
 
 function ReportedTime({ value, compact = false }: { value: string | null; compact?: boolean }) {
@@ -18,7 +19,8 @@ function ReportedTime({ value, compact = false }: { value: string | null; compac
 const dollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
 
 function fees(trip: FlightTrip) {
-  return trip.cash_fees_usd == null ? 'USD fees unavailable' : `${dollars.format(trip.cash_fees_usd)} USD fees`
+  const amount = verifiedTripFees(trip)
+  return amount === null ? 'USD fees unavailable' : `${dollars.format(amount)} USD fees`
 }
 
 function BookingOptions({ links }: { links: TripDetailsResponse['booking_links'] }) {
@@ -50,7 +52,7 @@ function bookingUrl(value: string | null) {
   } catch { return null }
 }
 
-function TripRow({ trip, route }: { trip: FlightTrip; route?: string }) {
+function TripRow({ trip, route, entry, best }: { trip: FlightTrip; route?: string; entry?: ValueEntry; best: boolean }) {
   const [open, setOpen] = useState(false)
   const detailsId = useId()
   const flights = trip.flight_numbers.join(' / ') || 'Flight numbers not reported'
@@ -95,6 +97,10 @@ function TripRow({ trip, route }: { trip: FlightTrip; route?: string }) {
           <strong>{trip.points === null ? 'Points not reported' : <>{trip.points.toLocaleString('en-US')}<small> pts</small></>}</strong>
           <span>{fees(trip)}</span>
         </div>
+      </div>
+      <div className="availability-flight-value">
+        <AwardValue value={entry?.value} best={best}
+          bestScope={entry ? `${entry.result.origin} → ${entry.result.destination} · ${entry.result.departure_date} · ${entry.trip.cabin.replace('_', ' ')} · ${entry.result.search_passengers} ${entry.result.search_passengers === 1 ? 'traveler' : 'travelers'}` : undefined} />
         <button className="compact-button compact-button--icon availability-flight-toggle"
           aria-label={`${open ? 'Hide' : 'Show'} flight details for ${flights}`}
           aria-expanded={open} aria-controls={detailsId} onClick={() => setOpen(!open)}>
@@ -128,8 +134,9 @@ function TripRow({ trip, route }: { trip: FlightTrip; route?: string }) {
   </article>
 }
 
-export default function TripDetails({ response, cabin, route }: {
+export default function TripDetails({ response, cabin, route, entries = [], bestKeys, visibleKeys }: {
   response: Pick<TripDetailsResponse, 'trips' | 'booking_links'>; cabin: ChatCabin; route?: string
+  entries?: ValueEntry[]; bestKeys?: Set<string>; visibleKeys?: Set<string>
 }) {
   const [page, setPage] = useState(1)
   const [sort, setSort] = useState('points')
@@ -139,14 +146,20 @@ export default function TripDetails({ response, cabin, route }: {
     .filter((value) => !cabinOptions.some((option) => option.key === value))
     .map((value) => ({ key: value, label: value }))]
   const cabinLabel = options.find((option) => option.key === selectedCabin)?.label
-  const trips = response.trips.filter((trip) => trip.cabin === selectedCabin)
+  const entriesByKey = new Map(entries.map((entry) => [entry.key, entry]))
+  const cabinEntries = entries.filter((entry) => entry.trip.cabin === selectedCabin)
+  const fares = [...new Set(cabinEntries.map((entry) => entry.result.cash_fare_usd).filter((fare): fare is number => typeof fare === 'number'))]
+  const cashFare = fares.length === 1 ? fares[0] : null
+  const uniqueTrips = [...new Map(response.trips.map((trip) => [tripValueKey(trip), trip])).values()]
+  const trips = uniqueTrips.filter((trip) => trip.cabin === selectedCabin
+    && (!visibleKeys || visibleKeys.has(tripValueKey(trip))))
   if (sort !== 'reported') trips.sort((a, b) => {
     if (sort === 'departure') return a.departs_at_local.localeCompare(b.departs_at_local)
-    const first = sort === 'points' ? a.points : a.duration_minutes
-    const second = sort === 'points' ? b.points : b.duration_minutes
+    const first = sort === 'value' ? entriesByKey.get(tripValueKey(a))?.value?.cpp ?? null : sort === 'points' ? a.points : a.duration_minutes
+    const second = sort === 'value' ? entriesByKey.get(tripValueKey(b))?.value?.cpp ?? null : sort === 'points' ? b.points : b.duration_minutes
     if (first === null) return second === null ? 0 : 1
     if (second === null) return -1
-    return first - second
+    return sort === 'value' ? second - first : first - second
   })
 
   return <Tabs.Root value={selectedCabin} onValueChange={(value) => { setSelectedCabin(value); setPage(1) }}>
@@ -169,16 +182,23 @@ export default function TripDetails({ response, cabin, route }: {
           <option value="departure">Departure time</option>
           <option value="points">Lowest points</option>
           <option value="duration">Shortest duration</option>
+          <option value="value">Highest estimated CPP</option>
         </select>
       </label>}
       <BookingOptions links={response.booking_links} />
     </div>
+    {cashFare !== null && <p className="availability-cash-benchmark">
+      <strong>Estimated cash fare: {dollars.format(cashFare)} per person</strong>
+      <span>Same route, date and cabin; may be a different flight.</span>
+    </p>}
     {trips.length === 0 && <p role="status">No {cabinLabel?.toLowerCase()} trips were returned for this availability.</p>}
     {trips.length > 0 && <>
       <p className="availability-flight-scroll-hint">Scroll sideways to see all flight details.</p>
       <div className="availability-flight-rows" role="region" aria-label="Flight itineraries" tabIndex={0}>
-        {trips.slice((page - 1) * 5, page * 5).map((trip, index) => <TripRow key={`${selectedCabin}-${trip.trip_id}-${index}`} trip={trip} route={route} />)}
+        {trips.slice((page - 1) * 5, page * 5).map((trip) => <TripRow key={tripValueKey(trip)} trip={trip} route={route}
+          entry={entriesByKey.get(tripValueKey(trip))} best={bestKeys?.has(tripValueKey(trip)) ?? false} />)}
       </div>
+      <p className="availability-list-note">{cabinEntries.length} matched loaded trips · {cabinEntries.filter((entry) => entry.eligible).length} eligible for value comparison. Unknown fees, seats or cabin evidence are excluded.</p>
     </>}
     {trips.length > 5 && <AvailabilityPagination label="Trip pagination" unit="trips" page={page}
       pageSize={5} total={trips.length} onPageChange={(next, scroll) => {

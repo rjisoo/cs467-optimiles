@@ -167,6 +167,7 @@ def test_unsupported_constraints_do_not_silently_search(monkeypatch, message):
 @pytest.mark.parametrize(("error", "code"), [
     (httpx.ReadTimeout("late"), "model_timeout"),
     (httpx.ConnectError("offline"), "model_unavailable"),
+    (errors.ServerError(503, {"error": {"message": "high demand"}}), "model_unavailable"),
     (errors.APIError(429, {"error": {"message": "quota"}}), "model_quota"),
 ])
 def test_model_failure_preserves_completed_group(error, code):

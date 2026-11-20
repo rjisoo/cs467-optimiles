@@ -14,6 +14,7 @@ memory for CACHE_TTL_SECONDS, and search.py caps lookups per search.
 """
 
 import logging
+import math
 import os
 import re
 import threading
@@ -172,7 +173,8 @@ def _valid_price(itinerary: object) -> bool:
         return False
     price = itinerary.get("price")
     # bool is a subclass of int in Python, so exclude it explicitly.
-    return isinstance(price, (int, float)) and not isinstance(price, bool) and price > 0
+    return (isinstance(price, (int, float)) and not isinstance(price, bool)
+            and 0 < price <= 90071992547409.91 and math.isfinite(price))
 
 
 def _all_segments_in_cabin(itinerary: dict, cabin: Cabin) -> bool:

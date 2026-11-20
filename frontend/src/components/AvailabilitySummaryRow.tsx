@@ -1,10 +1,12 @@
 import type { ChatCabin } from '../services/chat-response'
-import { cabinOptions, type AvailabilitySummary } from '../services/availability-presentation'
+import { cabinOptions, getSummaryValue, type AvailabilitySummary, type ValueComparison } from '../services/availability-presentation'
 import { awardDateLabel } from '../lib/trip-date'
 import Icon from './Icon'
+import AwardValue from './AwardValue'
 
 type Props = {
   summary: AvailabilitySummary
+  comparison: ValueComparison
   comparisonCabins: ChatCabin[]
   open: boolean
   detailsId: string
@@ -14,7 +16,7 @@ type Props = {
 
 const dollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
 
-export default function AvailabilitySummaryRow({ summary, comparisonCabins, open, detailsId, onToggle, onSelectCabin }: Props) {
+export default function AvailabilitySummaryRow({ summary, comparison, comparisonCabins, open, detailsId, onToggle, onSelectCabin }: Props) {
   const canExpand = summary.availabilityIds.length > 0
   return (
     <tr className="availability-day" aria-label={`${awardDateLabel(summary.departure_date)} ${summary.program}`}
@@ -47,9 +49,9 @@ export default function AvailabilitySummaryRow({ summary, comparisonCabins, open
       {cabinOptions.map(({ key, label }) => {
         const offer = summary.cabins[key]
         const price = offer && <>
-          <strong className="availability-cabin-points">{offer.points_cost.toLocaleString('en-US')} pts</strong>
+          <strong className="availability-cabin-points">From {offer.points_cost.toLocaleString('en-US')} pts</strong>
           <span className="availability-list-note">{offer.cash_fees_usd === null
-            ? 'Cash fees not reported' : `${dollars.format(offer.cash_fees_usd)} USD fees`}</span>
+            ? 'Cash fees not reported' : `Minimum fees: ${dollars.format(offer.cash_fees_usd)} USD`}</span>
         </>
         return (
           <td key={key} className="availability-cabin" data-selected={comparisonCabins.includes(key)}>
@@ -61,10 +63,13 @@ export default function AvailabilitySummaryRow({ summary, comparisonCabins, open
                   aria-expanded={open} aria-controls={open ? detailsId : undefined}
                   onClick={() => onSelectCabin(key)}>{price}</button>
                   : <p className="availability-cabin-price">{price}</p>}
-                <p className="availability-list-note">{offer.cents_per_point === null
-                  ? 'CPP not reported' : `CPP: ${offer.cents_per_point.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}¢/pt`}</p>
-                <p className="availability-list-note">{offer.seats_available === null
-                  ? 'Seats not reported' : `Reported seats: ${offer.seats_available}`}</p>
+                {offer.cash_fare_usd != null && <p className="availability-list-note">
+                  Est. cash fare: {dollars.format(offer.cash_fare_usd)} USD / person
+                </p>}
+                <AwardValue compact value={getSummaryValue(offer, comparison)} />
+                {offer.seats_available !== null && <p className="availability-list-note">
+                  Reported seats: {offer.seats_available}
+                </p>}
               </> : <p className="availability-list-note availability-cabin-unreported">Not reported</p>}
             </section>
           </td>

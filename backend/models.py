@@ -105,6 +105,8 @@ class StructuredSearchCriteria(SearchCriteria):
 
 
 class Result(BaseModel):
+    source: str | None = Field(default=None, description="Stable booking-program source key")
+    search_passengers: int | None = Field(default=None, ge=1, le=9, description="Captured requested passenger count")
     availability_id: str | None = Field(
         default=None, description="Provider availability ID for loading trip details"
     )
@@ -128,6 +130,7 @@ class Result(BaseModel):
     cash_fare_usd: float | None = Field(
         default=None,
         gt=0,
+        allow_inf_nan=False,
         description=(
             "Estimated cheapest one-way cash fare per passenger for the same route, date and "
             "cabin (Google Flights via SerpApi); not necessarily the same flight. Null when "
@@ -136,13 +139,13 @@ class Result(BaseModel):
     )
     cents_per_point: float | None = Field(
         default=None,
-        description="(cash_fare_usd - cash_fees_usd) * 100 / points_cost; null without a cash fare",
+        description="Null on availability summaries; exact-trip CPP requires matching points and verified USD fees",
     )
     value_rating: ValueRating | None = Field(
         default=None,
         description=(
-            "cents_per_point compared with a 1.0 cent baseline: bad (below 1.0, pay cash), "
-            "fair (1.0+), good (1.3+), great (1.7+), exceptional (2.5+). Null without a cash fare"
+            "Null on availability summaries. Exact-trip display tiers use estimated CPP: "
+            "bad (below 1.0), fair (1.0+), good (1.3+), great (1.7+), exceptional (2.5+)"
         ),
     )
     value_warning: str | None = Field(
@@ -247,6 +250,7 @@ class GetTripFlight(BaseModel):
     availability_id: str
     source: str
     cabin: str
+    is_mixed_cabin: bool | None = Field(default=None, description="False with full-cabin request evidence; true for contradictory mixed-cabin data")
     points: int | float | None = Field(ge=0, allow_inf_nan=False, description="Points cost")
     points_cash_value: dict[str, RewardValue] | None = Field(
         default=None,
@@ -259,7 +263,7 @@ class GetTripFlight(BaseModel):
     taxes_currency: str | None = None
     cash_fees_usd: float | None = Field(
         default=None, ge=0, allow_inf_nan=False,
-        description="Taxes and fees in USD; null when missing or explicitly non-USD",
+        description="Verified same-trip USD fees; null for unknown currency, unsupported reporting or invalid amounts",
     )
     reported_seats: int | float | None = Field(
         ge=0, allow_inf_nan=False, description="Seats reported by the provider"

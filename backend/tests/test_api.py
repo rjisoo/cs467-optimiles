@@ -172,7 +172,7 @@ def provider(monkeypatch):
 def test_loads_one_provider_record_and_preserves_reported_data(client, provider):
     response = client.get(PATH)
     assert response.status_code == 200
-    provider.assert_called_once_with(trip_id=AVAILABILITY_ID, params={})
+    provider.assert_called_once_with(trip_id=AVAILABILITY_ID, params={"min_cabin_pct": 100})
     body = response.get_json()
     GetTripResponse.model_validate(body)
     assert body["availability_id"] == AVAILABILITY_ID
@@ -235,7 +235,7 @@ def test_single_carrier_itinerary_names_each_segment_without_flight_numbers(clie
 
 
 @pytest.mark.parametrize(("currency", "taxes", "usd"), [
-    ("USD", 560, 5.6), ("", 560, 5.6), (None, "560", 5.6),
+    ("USD", 560, 5.6), (" usd ", 560, 5.6), ("", 560, None), (None, "560", None),
     ("USD", 0, 0), ("USD", None, None), ("CAD", 560, None),
 ])
 def test_trip_fees_are_normalized_to_usd_without_inventing_fx(client, provider, currency, taxes, usd):
@@ -274,8 +274,6 @@ def test_rejects_invalid_ids_before_provider_request(client, provider, value):
 
 @pytest.mark.parametrize("payload", [
     {}, {"data": None}, {"data": {}}, {"data": [{"ID": "incomplete"}]},
-    {"data": [{**RAW_TRIP, "MileageCost": "not a number"}]},
-    {"data": [{**RAW_TRIP, "TotalTaxes": -1}]},
     {"data": [{**RAW_TRIP, "AvailabilityID": "wrong-record"}]},
 ])
 def test_malformed_upstream_data_is_not_empty_success_or_client_error(client, provider, payload):
@@ -318,3 +316,55 @@ def test_missing_provider_id_does_not_invent_an_expandable_identifier(monkeypatc
     monkeypatch.setattr("backend.search._fetch_availability", lambda criteria: {"data": [row]})
     criteria = SearchCriteria(origin="JFK", destination="SEA", departure_date="2026-12-01")
     assert search_awards(criteria).results[0].availability_id is None
+
+
+@pytest.mark.parametrize("source", ["qatar", "turkish", "singapore"])
+@pytest.mark.parametrize("taxes", [0, 560])
+def test_programs_without_fee_reporting_remain_unrated(client, provider, source, taxes):
+    provider.return_value["data"][0].update(Source=source, TotalTaxes=taxes)
+    trip = client.get(PATH).get_json()["trips"][0]
+    assert trip["taxes_minor"] == taxes
+    assert trip["cash_fees_usd"] is None
+
+
+@pytest.mark.parametrize("field,value,normalized", [
+    ("TotalTaxes", True, "taxes_minor"), ("TotalTaxes", -1, "taxes_minor"),
+    ("TotalTaxes", "NaN", "taxes_minor"), ("MileageCost", True, "points"),
+    ("MileageCost", "not a number", "points"), ("RemainingSeats", True, "reported_seats"),
+    ("MileageCost", "15000.0000000000001", "points"),
+    ("TotalTaxes", "560.00000000000001", "taxes_minor"),
+    ("RemainingSeats", "2.0000000000000001", "reported_seats"),
+])
+def test_invalid_optional_trip_numbers_do_not_discard_flights(client, provider, field, value, normalized):
+    provider.return_value["data"][0][field] = value
+    response = client.get(PATH)
+    assert response.status_code == 200
+    trip = response.get_json()["trips"][0]
+    assert trip[normalized] is None
+    if field == "TotalTaxes":
+        assert trip["cash_fees_usd"] is None
+
+
+def test_fractional_fees_stay_reported_but_cannot_be_verified_usd(client, provider):
+    provider.return_value["data"][0]["TotalTaxes"] = 560.5
+    trip = client.get(PATH).get_json()["trips"][0]
+    assert trip["taxes_minor"] == 560.5
+    assert trip["cash_fees_usd"] is None
+
+
+@pytest.mark.parametrize("extra,expected", [
+    ({}, False), ({"MixedCabin": True}, True), ({"CabinPct": 75}, True),
+    ({"CabinPct": "100"}, False), ({"MixedCabin": "unknown"}, None),
+    ({"AvailabilitySegments": [{"Cabin": "economy"}]}, True),
+    ({"AvailabilitySegments": [{"Cabin": "first"}]}, False),
+    ({"AvailabilitySegments": [{"Cabin": {"unexpected": "business"}}]}, None),
+    ({"AvailabilitySegments": [{"Cabin": {}}]}, None),
+    ({"AvailabilitySegments": [{"Cabin": []}]}, None),
+    ({"AvailabilitySegments": [{"Cabin": False}]}, None),
+    ({"AvailabilitySegments": [{"Cabin": 0}]}, None),
+])
+def test_full_cabin_evidence_checks_contradictory_provider_fields(client, provider, extra, expected):
+    provider.return_value["data"][0].update(Cabin="business", **extra)
+    response = client.get(PATH)
+    assert response.status_code == 200
+    assert response.get_json()["trips"][0]["is_mixed_cabin"] is expected

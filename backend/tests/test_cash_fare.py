@@ -20,6 +20,11 @@ FIXTURES = Path(__file__).parent / "fixtures"
 REAL_LOOKUP = cash_fare.lookup_cash_fare
 
 
+@pytest.mark.parametrize("price", [float("inf"), float("nan"), 90071992547410])
+def test_nonfinite_or_unsafe_prices_are_not_cash_fares(price):
+    assert cheapest_cash_fare({"best_flights": [{"price": price}]}, "economy") is None
+
+
 def live_fixture():
     return json.loads((FIXTURES / "serpapi_ord_nrt_business_2026-12-01.json").read_text(encoding="utf-8"))
 
