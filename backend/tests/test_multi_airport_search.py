@@ -5,7 +5,7 @@ import pytest
 
 from backend import search
 from backend.llm.tools import SEARCH_AWARDS_DECLARATION, run_search_tool
-from backend.models import SearchCriteria, StructuredSearchCriteria
+from backend.models import SearchResponse, StructuredSearchCriteria
 
 REAL_FETCH = search._fetch_availability
 REQUEST = {"origin": [" jfk ", "LGA", "ewr"], "destination": ["lhr", " CDG "],
@@ -64,7 +64,7 @@ def test_rejects_invalid_selections_before_search(client, monkeypatch, field, va
     provider.assert_not_called()
 
 
-def test_openapi_documents_bounded_arrays_only_for_direct_search(client):
+def test_openapi_documents_bounded_arrays_for_direct_search(client):
     spec = client.get("/openapi.json").get_json()
     request = spec["paths"]["/api/search"]["post"]["requestBody"]["content"]["application/json"]
     assert request["schema"] == {"$ref": "#/components/schemas/StructuredSearchCriteria"}
@@ -180,15 +180,38 @@ def test_unrequested_rows_do_not_affect_results_or_empty_reasons(monkeypatch, se
     assert response.message == "No award availability found from JFK, LGA, EWR to LHR, CDG on 2026-12-01."
 
 
-@pytest.mark.parametrize("field", ["origin", "destination"])
-def test_chat_schema_and_validation_remain_single_airport(monkeypatch, field):
-    provider = Mock(side_effect=AssertionError("Chat arrays must not search"))
+@pytest.mark.parametrize(("field", "selection"), [
+    ("origin", "JFK"), ("origin", ["JFK", "LGA"]),
+    ("destination", "LHR"), ("destination", ["LHR", "CDG"]),
+])
+def test_chat_accepts_explicit_single_airports_and_alternatives(monkeypatch, field, selection):
+    provider = Mock(return_value=SearchResponse(results=[], message="No matches."))
     monkeypatch.setattr("backend.llm.tools.search_awards", provider)
     args = {"origin": "JFK", "destination": "LHR", "departure_date": "2026-12-01",
-            "origin_quote": "New York", "destination_quote": "London", "date_quote": "Dec 1", field: ["JFK", "LGA"]}
-    assert SEARCH_AWARDS_DECLARATION["parameters_json_schema"]["properties"][field]["type"] == "string"
-    with pytest.raises(ValueError):
-        SearchCriteria.model_validate(args)
-    payload, results = run_search_tool(args, "New York to London Dec 1")
+            "origin_quote": "JFK", "destination_quote": "LHR",
+            "date_quote": "2026-12-01", field: selection}
+    args[f"{field}_quote"] = selection if isinstance(selection, str) else " or ".join(selection)
+    message = f"{args['origin_quote']} to {args['destination_quote']} on 2026-12-01"
+    choices = SEARCH_AWARDS_DECLARATION["parameters_json_schema"]["properties"][field]["anyOf"]
+    assert {choice["type"] for choice in choices} == {"string", "array"}
+    payload, results = run_search_tool(args, message, require_confirmation=True)
+    provider.assert_called_once()
+    assert getattr(provider.call_args.args[0], field) == selection
+    assert payload["criteria"][field] == selection
+    assert payload["count"] == 0 and payload["message"] == "No matches."
+    assert "error" not in payload and "confirmation" not in payload and results == []
+
+
+@pytest.mark.parametrize("field", ["origin", "destination"])
+@pytest.mark.parametrize("selection", [[], ["JFK", " jfk "], ["QQQ"],
+                                      ["JFK", "LGA", "EWR", "SFO", "SEA", "LAX", "ORD"]])
+def test_chat_rejects_invalid_airport_alternatives_before_search(monkeypatch, field, selection):
+    provider = Mock(side_effect=AssertionError("Invalid alternatives must not search"))
+    monkeypatch.setattr("backend.llm.tools.search_awards", provider)
+    quote = str(selection)
+    args = {"origin": "JFK", "destination": "LHR", "departure_date": "2026-12-01",
+            "origin_quote": "JFK", "destination_quote": "LHR", "date_quote": "2026-12-01",
+            field: selection, f"{field}_quote": quote}
+    payload, results = run_search_tool(args, f"JFK to LHR on 2026-12-01 using {quote}", require_confirmation=True)
     assert payload["error"] == "Invalid search criteria" and results == []
     provider.assert_not_called()

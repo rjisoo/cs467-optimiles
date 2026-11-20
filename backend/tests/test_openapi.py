@@ -106,6 +106,16 @@ def test_docs_and_requests_follow_application_mount_path(client):
     assert spec["servers"] == [{"url": "/optimiles"}]
 
 
+def test_chat_documents_context_outcomes_and_captured_searches(client):
+    schemas = client.get("/openapi.json").get_json()["components"]["schemas"]
+    request = schemas["ChatRequest"]["properties"]
+    response = schemas["ChatResponse"]["properties"]
+    assert {"history", "context", "confirmed"} <= request.keys()
+    assert {"clarification", "confirmation", "failed", "partial", "empty"} <= set(response["status"]["enum"])
+    assert {"criteria", "missing_fields", "failure", "searches"} <= response.keys()
+    assert {"programs", "max_points"} <= schemas["ChatCriteria"]["properties"].keys()
+
+
 def test_cabin_is_optional_nullable_in_search_but_concrete_in_results(client):
     schemas = client.get("/openapi.json").get_json()["components"]["schemas"]
     criteria_schema = schemas["SearchCriteria"]

@@ -287,12 +287,47 @@ class ChatMessage(BaseModel):
     content: str
 
 
+class ChatCriteria(StructuredSearchCriteria):
+    programs: list[str] | None = Field(default=None, description="Requested loyalty-program name filters")
+    max_points: int | None = Field(default=None, ge=1, le=9007199254740991, description="Requested maximum award points")
+
+    @field_validator("programs")
+    @classmethod
+    def normalize_programs(cls, names: list[str] | None) -> list[str] | None:
+        return None if names is None else [name.strip() for name in names if name.strip()]
+
+
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
     history: list[ChatMessage] = Field(
         default=[],
         description="Earlier messages, oldest first. Only the last 20 non-blank ones are used.",
     )
+    context: ChatCriteria | None = Field(
+        default=None, description="Current trip criteria. Explicit new details override these defaults."
+    )
+    confirmed: bool = Field(default=False, description="Search the supplied context exactly, after explicit confirmation")
+
+    @model_validator(mode="after")
+    def require_confirmation_context(self) -> "ChatRequest":
+        if self.confirmed and self.context is None:
+            raise ValueError("Confirmation requires trip context")
+        return self
+
+
+class ChatFailure(BaseModel):
+    code: str
+    retryable: bool
+
+
+class ChatSearch(BaseModel):
+    criteria: ChatCriteria
+    status: Literal["results", "empty", "failed"]
+    results: list[Result] = Field(default_factory=list)
+    message: str | None = None
+    partial: bool = False
+    warnings: list[str] = Field(default_factory=list)
+    failure: ChatFailure | None = None
 
 
 class ChatResponse(BaseModel):
@@ -300,3 +335,8 @@ class ChatResponse(BaseModel):
     results: list[Result] = []
     partial: bool = False
     warnings: list[str] = Field(default_factory=list)
+    status: Literal["reply", "clarification", "confirmation", "results", "empty", "failed", "partial"] = "reply"
+    criteria: ChatCriteria | None = None
+    missing_fields: list[str] = Field(default_factory=list)
+    failure: ChatFailure | None = None
+    searches: list[ChatSearch] = Field(default_factory=list)

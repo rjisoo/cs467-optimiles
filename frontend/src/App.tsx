@@ -2,12 +2,14 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import AppNavigation from './components/AppNavigation'
 import AwardHelp from './components/AwardHelp'
 import TripEntry from './components/TripEntry'
+import TripEditor from './components/TripEditor'
 import Conversation from './components/Conversation'
 import CurrentTrip from './components/CurrentTrip'
 import useChatJourney from './useChatJourney'
 
 function App() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
   const {
     draft,
     setDraft,
@@ -20,14 +22,21 @@ function App() {
     cancel,
     reset,
     retry,
+    confirm,
+    retrySearch,
     airportCatalog,
     airportStatus,
     loadAirports,
+    currentCriteria,
+    prepareEdit,
   } = useChatJourney()
   const hasConversation = turns.length > 0
   const latestTurn = turns[turns.length - 1]
   const entryHeadingRef = useRef<HTMLHeadingElement>(null)
   const shellRef = useRef<HTMLDivElement>(null)
+  const editButtonRef = useRef<HTMLButtonElement>(null)
+  const entryProps = { draft, onDraftChange: setDraft, fieldErrors, formAttempt, pending,
+    airportCatalog, airportStatus, onLoadAirports: loadAirports }
 
   useLayoutEffect(() => {
     const viewport = window.visualViewport
@@ -48,6 +57,7 @@ function App() {
 
   function startNewTrip() {
     setIsMenuOpen(false)
+    setIsEditing(false)
     reset()
     entryHeadingRef.current?.focus()
   }
@@ -73,27 +83,31 @@ function App() {
         {hasConversation && (
           <>
             <CurrentTrip results={latestTurn.response?.results ?? []}
-              criteria={latestTurn.source === 'form' ? latestTurn.payload : undefined} />
+              criteria={currentCriteria} pending={pending} editButtonRef={editButtonRef}
+              onEdit={() => {
+                prepareEdit()
+                void loadAirports()
+                setIsMenuOpen(false)
+                setIsEditing(true)
+              }} />
+            <TripEditor {...entryProps} open={isEditing} onOpenChange={setIsEditing}
+              resetsFilters={!!(currentCriteria?.programs?.length || currentCriteria?.max_points)}
+              returnFocusRef={editButtonRef} onSubmit={() => submit('form')} />
             <Conversation
               turns={turns}
               lastActionId={lastActionId}
               pending={pending}
               onRetry={retry}
+              onConfirm={confirm}
+              onRetrySearch={retrySearch}
             />
           </>
         )}
         <TripEntry
-          draft={draft}
-          onDraftChange={setDraft}
+          {...entryProps}
           onSubmit={submit}
-          fieldErrors={fieldErrors}
-          formAttempt={formAttempt}
-          pending={pending}
           onCancel={cancel}
           composerOnly={hasConversation}
-          airportCatalog={airportCatalog}
-          airportStatus={airportStatus}
-          onLoadAirports={loadAirports}
         />
       </main>
     </div>

@@ -5,6 +5,7 @@ results. It never searches or computes values itself."""
 
 import logging
 import os
+import re
 import threading
 from datetime import date
 from pathlib import Path
@@ -15,8 +16,8 @@ from google import genai
 from google.genai import errors, types
 
 from backend.llm.rate_limit import GeminiRateLimiter
-from backend.llm.tools import SEARCH_AWARDS, SEARCH_AWARDS_DECLARATION, run_search_tool
-from backend.models import ChatMessage, ChatRequest, ChatResponse, Result
+from backend.llm.tools import CLARIFY_TRIP, CLARIFY_TRIP_DECLARATION, SEARCH_AWARDS, SEARCH_AWARDS_DECLARATION, run_search_tool
+from backend.models import ChatCriteria, ChatFailure, ChatMessage, ChatRequest, ChatResponse, ChatSearch, Result
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +76,13 @@ Rules:
 - If the tool returns an error, explain what needs fixing and ask the user.
 - Follow-ups: when the user changes one detail (date, cabin, passengers), search again and reuse
   the other details from earlier in the conversation. To compare dates, search each date.
+- Structured current-trip context overrides older history. Pass only changed details to search_awards;
+  omitted fields reuse context, including airport alternatives, date ranges, cabins and passengers.
+  Include quotes for changed details. Explicit new details override context.
+- When details are missing or a request is unsupported, call clarify_trip with one question and
+  every missing_fields item. Never search in the same response as a clarification.
+- City names and dates without a year require confirmation of the proposed airports and exact dates.
+  The search tool will request confirmation before searching; do not bypass it with another call.
 - To narrow results to certain programs or a points limit, search again with programs or
   max_points. Never filter or compare results yourself.
 - When you report results, first state what was searched (route, date, cabin or "all cabins",
@@ -150,6 +158,10 @@ def build_contents(request: ChatRequest) -> list[types.Content]:
         )
         for message in recent_history(request)
     ]
+    if request.context:
+        contents.append(types.Content(role="user", parts=[types.Part(
+            text="Current trip context (use instead of older history): " + request.context.model_dump_json()
+        )]))
     contents.append(types.Content(role="user", parts=[types.Part(text=request.message)]))
     return contents
 
@@ -161,41 +173,99 @@ def run_chat(
     rate_limiter: GeminiRateLimiter | None = None,
 ) -> ChatResponse:
     """Answer one chat message, running award searches the model asks for."""
+    outcome = ChatResponse(reply="", criteria=request.context)
+
+    def finish(reply: str, failure: str | None = None) -> ChatResponse:
+        outcome.reply = reply
+        if failure:
+            outcome.failure = ChatFailure(code=failure, retryable=True)
+        completed = any(group.status != "failed" for group in outcome.searches)
+        if completed and outcome.status in ("clarification", "confirmation"):
+            outcome.status = "partial"
+            outcome.partial = True
+            outcome.warnings.append("Some requested searches need more details or confirmation. Use Edit trip to review them.")
+        if outcome.failure:
+            outcome.status = "partial" if completed else "failed"
+            outcome.partial |= completed
+        elif outcome.status not in ("clarification", "confirmation") and outcome.searches:
+            outcome.status = "partial" if outcome.partial else "results" if outcome.results else "empty"
+        return outcome
+
+    def collect(payload: dict, found: list[Result]) -> None:
+        if payload.get("criteria"):
+            outcome.criteria = ChatCriteria.model_validate(payload["criteria"])
+        outcome.results = merge_results(outcome.results, found)
+        outcome.partial |= payload.get("partial", False)
+        outcome.warnings = list(dict.fromkeys([*outcome.warnings, *payload.get("warnings", [])]))
+        if payload.get("failure"):
+            outcome.failure = ChatFailure.model_validate(payload["failure"])
+        if payload.get("confirmation"):
+            outcome.status = "confirmation"
+            outcome.missing_fields = payload.get("missing", [])
+        elif payload.get("error") and not payload.get("failure"):
+            outcome.status = "clarification"
+            outcome.missing_fields = payload.get("missing", ["trip details"])
+        elif payload.get("criteria"):
+            group = ChatSearch(
+                criteria=outcome.criteria, status="failed" if payload.get("failure") else "results" if found else "empty",
+                results=found, message=payload.get("error") or payload.get("message"),
+                partial=payload.get("partial", False), warnings=payload.get("warnings", []), failure=payload.get("failure"),
+            )
+            if group not in outcome.searches:
+                outcome.searches.append(group)
+            outcome.status = "reply"
+            outcome.missing_fields = []
+
+    if request.confirmed:
+        payload, found = run_search_tool({}, "", request.context, confirmed=True)
+        collect(payload, found)
+        return finish(payload.get("error") or payload.get("message") or "Here are the requested award options.")
+    if re.search(r"\b(non[ -]?stop|round[ -]?trip|return flight|direct flights?|(?:\d+|one|two|three) stops?)\b", request.message, re.I):
+        return ChatResponse(reply="Chat supports one-way availability searches without a stops filter. Please confirm supported trip details using Edit trip.",
+                            status="clarification", criteria=request.context, missing_fields=["unsupported request"])
     client = client or get_client()
     model = model or get_model()
     rate_limiter = rate_limiter or get_rate_limiter()
     config = types.GenerateContentConfig(
         system_instruction=SYSTEM_PROMPT.format(today=date.today().isoformat()),
-        tools=[types.Tool(function_declarations=[SEARCH_AWARDS_DECLARATION])],
+        tools=[types.Tool(function_declarations=[SEARCH_AWARDS_DECLARATION, CLARIFY_TRIP_DECLARATION])],
         automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
     )
     contents = build_contents(request)
     user_text = user_messages_text(request)
-    results: list[Result] = []
-    partial = False
-    warnings: list[str] = []
-
     try:
         for _ in range(MAX_TOOL_ROUNDS):
             if not rate_limiter.try_acquire():
                 logger.warning("Gemini rate limit reached; skipping the call")
-                return ChatResponse(reply=BUSY_REPLY, results=[])
+                return finish(BUSY_REPLY, "model_quota")
             response = client.models.generate_content(
                 model=model, contents=contents, config=config
             )
             calls = response.function_calls
             if not calls:
-                return ChatResponse(reply=response.text or "", results=results, partial=partial, warnings=warnings)
+                if not response.text and not outcome.searches:
+                    return finish("The assistant returned no usable response. Please try again.", "interpretation")
+                return finish(response.text or "")
+
+            clarification = next((call for call in calls if call.name == CLARIFY_TRIP), None)
+            if clarification:
+                args = dict(clarification.args or {})
+                question, missing = args.get("question"), args.get("missing_fields")
+                if not isinstance(question, str) or not question.strip() or not isinstance(missing, list) or not all(isinstance(field, str) for field in missing):
+                    return finish("The assistant could not interpret the trip. Please try again.", "interpretation")
+                outcome.status = "clarification"
+                outcome.missing_fields = missing
+                return finish(question)
 
             contents.append(response.candidates[0].content)
             response_parts = []
             for call in calls:
-                payload, call_results = _run_tool(call, user_text)
-                results = merge_results(results, call_results)
-                partial = partial or payload.get("partial", False)
-                for warning in payload.get("warnings", []):
-                    if warning not in warnings:
-                        warnings.append(warning)
+                if call.name != SEARCH_AWARDS:
+                    return finish("The assistant requested an unsupported operation.", "interpretation")
+                payload, call_results = run_search_tool(dict(call.args or {}), user_text, request.context, require_confirmation=True)
+                collect(payload, call_results)
+                if payload.get("confirmation"):
+                    return finish(payload["message"])
                 response_parts.append(
                     types.Part(
                         function_response=types.FunctionResponse(
@@ -206,19 +276,19 @@ def run_chat(
             contents.append(types.Content(role="user", parts=response_parts))
     except httpx.TimeoutException:
         logger.warning("Gemini call timed out")
-        return ChatResponse(reply=TIMEOUT_REPLY, results=[])
+        return finish(TIMEOUT_REPLY, "model_timeout")
     except httpx.HTTPError:
         logger.exception("Could not reach Gemini")
-        return ChatResponse(reply=UNAVAILABLE_REPLY, results=[])
+        return finish(UNAVAILABLE_REPLY, "model_unavailable")
     except errors.APIError as error:
         if error.code == 429:
             logger.warning("Gemini quota exceeded: %s", error)
-            return ChatResponse(reply=BUSY_REPLY, results=[])
+            return finish(BUSY_REPLY, "model_quota")
         logger.exception("Gemini API call failed")
-        return ChatResponse(reply=UNAVAILABLE_REPLY, results=[], partial=partial, warnings=warnings)
+        return finish(UNAVAILABLE_REPLY, "model_unavailable")
 
     logger.warning("Chat stopped after %d tool rounds", MAX_TOOL_ROUNDS)
-    return ChatResponse(reply=ROUND_LIMIT_REPLY, results=results, partial=partial, warnings=warnings)
+    return finish(ROUND_LIMIT_REPLY, "round_limit")
 
 
 def user_messages_text(request: ChatRequest) -> str:
@@ -240,9 +310,3 @@ def merge_results(earlier: list[Result], new: list[Result]) -> list[Result]:
             seen.add(key)
             merged.append(result)
     return merged
-
-
-def _run_tool(call: types.FunctionCall, user_text: str) -> tuple[dict, list[Result]]:
-    if call.name != SEARCH_AWARDS:
-        return {"error": f"Unknown tool: {call.name}"}, []
-    return run_search_tool(dict(call.args or {}), user_text)
