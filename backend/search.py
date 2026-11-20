@@ -5,15 +5,19 @@ search_awards() is the single entry point for both /api/search and the chat tool
 import json
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from time import monotonic
 
 from pydantic import ValidationError
 
+from backend import cash_fare
 from backend.errors import UPSTREAM_ERRORS, describe_upstream_error
 from backend.ext_api import APIRouterError, APITimeout, seatsaero_api
 from backend.models import Cabin, GetTripResponse, Result, SearchCriteria, SearchResponse
+from backend.value import cents_per_point, rate_value
 
+DEFAULT_LOOKUPS_PER_SEARCH = 4
 SEARCH_MAX_PAGES = 3
 SEARCH_PAGE_SIZE = 500
 SEARCH_MAX_ROWS = 1500
@@ -40,13 +44,45 @@ def get_availability_trips(availability_id: str) -> GetTripResponse:
         raise APIRouterError("Invalid trip details returned by the provider") from error
 
 
-def cents_per_point(
-    cash_price_usd: float | None, cash_fees_usd: float | None, points_cost: int
-) -> float | None:
-    """Value of each point in cents, or None when there is no cash price to compare."""
-    if cash_price_usd is None or points_cost <= 0:
-        return None
-    return round((cash_price_usd - (cash_fees_usd or 0)) * 100 / points_cost, 2)
+def _lookups_per_search() -> int:
+    """SERPAPI_LOOKUPS_PER_SEARCH (default 4 = every cabin of one route and date); 0 disables."""
+    try:
+        return max(0, int(os.getenv("SERPAPI_LOOKUPS_PER_SEARCH", DEFAULT_LOOKUPS_PER_SEARCH)))
+    except ValueError:
+        return DEFAULT_LOOKUPS_PER_SEARCH
+
+
+def add_value_ratings(results: list[Result]) -> list[Result]:
+    """Attach the estimated cash fare, cents per point and value rating to each result.
+
+    One cash-fare lookup per distinct (route, date, cabin), in the order the results come
+    (cheapest points first), capped per search to protect the SerpApi monthly quota.
+    Results past the cap, or whose lookup finds nothing, keep null value fields."""
+    keys: list[tuple[str, str, str, Cabin]] = []
+    for result in results:
+        key = (result.origin, result.destination, result.departure_date.isoformat(), result.cabin)
+        if key not in keys:
+            keys.append(key)
+    keys = keys[:_lookups_per_search()]
+    if not keys:
+        return results
+    with ThreadPoolExecutor(max_workers=len(keys)) as pool:
+        fares = dict(zip(keys, pool.map(lambda key: cash_fare.lookup_cash_fare(*key), keys)))
+
+    rated = []
+    for result in results:
+        fare = fares.get((result.origin, result.destination, result.departure_date.isoformat(), result.cabin))
+        if fare is None:
+            rated.append(result)
+            continue
+        rating, warning = rate_value(fare, result.cash_fees_usd, result.points_cost)
+        rated.append(result.model_copy(update={
+            "cash_fare_usd": fare,
+            "cents_per_point": cents_per_point(fare, result.cash_fees_usd, result.points_cost),
+            "value_rating": rating,
+            "value_warning": warning,
+        }))
+    return rated
 
 
 # seats.aero prefixes each cabin's fields: YMileageCost, JRemainingSeats, ...
@@ -65,7 +101,9 @@ _PROGRAM_NAMES = {
     "delta": "Delta SkyMiles",
     "emirates": "Emirates Skywards",
     "etihad": "Etihad Guest",
+    "ethiopian": "Ethiopian ShebaMiles",
     "flyingblue": "Air France-KLM Flying Blue",
+    "jal": "JAL Mileage Bank",
     "jetblue": "JetBlue TrueBlue",
     "lifemiles": "Avianca LifeMiles",
     "qantas": "Qantas Frequent Flyer",
@@ -96,7 +134,8 @@ def search_awards(criteria: SearchCriteria) -> SearchResponse:
             if result is not None:
                 results.append(result)
     if results:
-        return SearchResponse(results=sorted(results, key=lambda r: r.points_cost), partial=partial, warnings=warnings)
+        results = add_value_ratings(sorted(results, key=lambda r: r.points_cost))
+        return SearchResponse(results=results, partial=partial, warnings=warnings)
     message = ("No matching awards were found in the pages retrieved; the search is incomplete."
                if partial else _empty_message(rows, criteria))
     return SearchResponse(results=[], message=message, partial=partial, warnings=warnings)
@@ -254,8 +293,7 @@ def _to_result(row: dict, criteria: SearchCriteria, cabin: Cabin) -> Result | No
         points_cost=points_cost,
         cash_fees_usd=_fees_usd(row, prefix),
         seats_available=seats,
-        # Cached search has no cash fare to compare against.
-        cents_per_point=None,
+        # Value fields are filled later by add_value_ratings() (one cash-fare lookup per route).
     )
 
 

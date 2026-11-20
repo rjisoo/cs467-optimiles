@@ -15,7 +15,11 @@ def print_results(results: list[Result]) -> None:
         print("  (no results)")
         return
     for r in results:
-        value = f"{r.cents_per_point:.2f}c/pt" if r.cents_per_point is not None else "no value data"
+        value = (
+            f"{r.cents_per_point:.2f}c/pt {r.value_rating} (cash ~${r.cash_fare_usd:,.0f})"
+            + (" *" if r.value_warning else "")
+            if r.value_rating is not None else "no cash fare to compare"
+        )
         fees = f"${r.cash_fees_usd:.2f}" if r.cash_fees_usd is not None else "fees n/a"
         seats = f"{r.seats_available} seats" if r.seats_available is not None else "seats n/a"
         print(

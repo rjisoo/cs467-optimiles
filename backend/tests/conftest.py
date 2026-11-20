@@ -8,7 +8,7 @@ import pytest
 # tests never reach the network (see fake_seats_aero below).
 os.environ.setdefault("SEATSAERO_BASE_URL", "https://seats.aero.invalid/partnerapi")
 
-from backend import search  # noqa: E402
+from backend import cash_fare, search  # noqa: E402
 from backend.app import create_app  # noqa: E402
 from backend.llm import gemini_chat  # noqa: E402
 from backend.llm.rate_limit import GeminiRateLimiter  # noqa: E402
@@ -76,6 +76,16 @@ def seats_aero_row_fixture():
 @pytest.fixture(autouse=True)
 def fake_seats_aero(monkeypatch):
     monkeypatch.setattr(search, "_fetch_availability", fake_availability)
+
+
+@pytest.fixture(autouse=True)
+def no_cash_fares(monkeypatch):
+    """No test may spend SerpApi quota: hide any real key and find no cash fares.
+
+    Tests that need fares patch backend.cash_fare.lookup_cash_fare themselves."""
+    monkeypatch.delenv("SERPAPI_KEY", raising=False)
+    monkeypatch.setattr(cash_fare, "lookup_cash_fare", lambda *args: None)
+    cash_fare.clear_cache()
 
 
 @pytest.fixture(autouse=True)

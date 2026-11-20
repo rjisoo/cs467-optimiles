@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from backend import airports
 from backend.airports import airport_today, get_airport
+from backend.value import ValueRating
 
 Cabin = Literal["economy", "premium_economy", "business", "first"]
 AirportCode = Annotated[str, Field(pattern=r"^[A-Z]{3}$")]
@@ -124,9 +125,29 @@ class Result(BaseModel):
         ge=0,
         description="Seats left; null when the program doesn't report a count",
     )
+    cash_fare_usd: float | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Estimated cheapest one-way cash fare per passenger for the same route, date and "
+            "cabin (Google Flights via SerpApi); not necessarily the same flight. Null when "
+            "no fare was found or looked up"
+        ),
+    )
     cents_per_point: float | None = Field(
         default=None,
-        description="Redemption value; null when no cash price data exists",
+        description="(cash_fare_usd - cash_fees_usd) * 100 / points_cost; null without a cash fare",
+    )
+    value_rating: ValueRating | None = Field(
+        default=None,
+        description=(
+            "cents_per_point compared with a 1.0 cent baseline: bad (below 1.0, pay cash), "
+            "fair (1.0+), good (1.3+), great (1.7+), exceptional (2.5+). Null without a cash fare"
+        ),
+    )
+    value_warning: str | None = Field(
+        default=None,
+        description="Caveat about value_rating, e.g. award fees not reported; null when none",
     )
 
 
