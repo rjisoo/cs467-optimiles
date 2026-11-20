@@ -227,7 +227,8 @@ fi
 serverHealth=false
 # Health check through nginx
 for _ in $(seq 1 15); do
-  if curl -fsS http://127.0.0.1/api/health >/dev/null; then
+  # Call the backend locally to verify its health
+  if curl -fsS http://127.0.0.1:${BACKEND_PORT}/api/health >/dev/null; then
     echo "Optimiles is up."
     serverHealth=true
     break
