@@ -89,6 +89,7 @@ jobs:
       DDNS_UPDATE_INT: ${{ vars.DDNS_UPDATE_INT }}
       DDNS_PASSWORD: ${{ secrets.DDNS_PASSWORD }}
       CERTBOT_EMAIL: ${{ vars.CERTBOT_EMAIL }}
+      SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
       
     steps:
       - uses: actions/checkout@v5
@@ -124,6 +125,7 @@ jobs:
             printf 'GEMINI_MODEL=%s\n' "$GEMINI_MODEL"
             printf 'SEATSAERO_TOKEN=%s\n' "$SEATSAERO_TOKEN"
             printf 'SEATSAERO_BASE_URL=%s\n' "$SEATSAERO_BASE_URL"
+            printf 'SERPAPI_KEY=%s\n' "$SERPAPI_KEY"
           } > .env
           {
             printf 'DDNS_HOST=%s\n' "$DDNS_HOST"
