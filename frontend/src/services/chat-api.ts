@@ -1,4 +1,5 @@
 import { validateChatResponse, type ChatResponse } from './chat-response'
+import type { ChatRequest } from './chat-context'
 
 function failureMessage(status: number | null): string {
   if (status === null) {
@@ -26,13 +27,13 @@ export class ChatRequestError extends Error {
   }
 }
 
-export async function sendChatMessage(message: string, signal: AbortSignal): Promise<ChatResponse> {
+export async function sendChatMessage(request: ChatRequest | string, signal: AbortSignal): Promise<ChatResponse> {
   let response: Response
   try {
     response = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify(typeof request === 'string' ? { message: request } : request),
       signal,
     })
   } catch (error) {

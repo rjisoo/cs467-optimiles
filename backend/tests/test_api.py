@@ -126,14 +126,16 @@ def test_chat_returns_reply(client, monkeypatch):
         "/api/chat", json={"message": "Tokyo in December?", "history": []}
     )
     assert response.status_code == 200
-    assert response.get_json() == {"reply": "Where are you flying from?", "results": [], "partial": False, "warnings": []}
+    assert response.get_json() == ChatResponse(reply="Where are you flying from?").model_dump(mode="json")
 
 
 def test_chat_without_api_key_says_not_connected(client, monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "")
     response = client.post("/api/chat", json={"message": "Tokyo in December?"})
     assert response.status_code == 200
-    assert response.get_json() == {"reply": NOT_CONFIGURED_REPLY, "results": [], "partial": False, "warnings": []}
+    assert response.get_json()["reply"] == NOT_CONFIGURED_REPLY
+    assert response.get_json()["status"] == "failed"
+    assert response.get_json()["failure"] == {"code": "not_configured", "retryable": False}
 
 
 def test_chat_rejects_overlong_message(client):

@@ -25,16 +25,16 @@ from backend.llm.tools import run_search_tool
 from backend.models import ChatMessage, ChatRequest, SearchCriteria, SearchResponse
 from backend.search import search_awards
 
-USER_TEXT = "Business class from Chicago to Tokyo on Dec 1"
+USER_TEXT = "Business class from ORD to HND on 2026-12-01"
 SEARCH_ARGS = {
     "origin": "ORD",
     "destination": "HND",
     "departure_date": "2026-12-01",
     "cabin": "business",
     "cabin_quote": "Business class",
-    "origin_quote": "Chicago",
-    "destination_quote": "Tokyo",
-    "date_quote": "Dec 1",
+    "origin_quote": "ORD",
+    "destination_quote": "HND",
+    "date_quote": "2026-12-01",
 }
 
 
@@ -87,7 +87,7 @@ def chat(client, message=USER_TEXT, history=()):
     return run_chat(ChatRequest(message=message, history=list(history)), client, "test-model")
 
 
-@pytest.mark.parametrize("extra_fields", [{}, {"return_date": None}, {"departure_date_end": "2026-12-07"}])
+@pytest.mark.parametrize("extra_fields", [{}, {"return_date": None}])
 def test_run_search_tool_returns_exact_date_results_from_code(monkeypatch, extra_fields):
     search_tool = Mock(wraps=search_awards)
     monkeypatch.setattr("backend.llm.tools.search_awards", search_tool)
@@ -109,9 +109,9 @@ def test_run_search_tool_reports_invalid_args():
     assert results == []
 
 
-def test_chat_ignores_undeclared_cabins_argument():
-    _, results = run_search_tool({**SEARCH_ARGS, "cabins": ["economy"]}, USER_TEXT)
-    assert results == search_awards(criteria()).results
+def test_chat_accepts_grounded_multiple_cabins():
+    _, results = run_search_tool({**SEARCH_ARGS, "cabins": ["economy", "business"], "cabin_quote": "economy and business"}, USER_TEXT + " economy and business")
+    assert {result.cabin for result in results} == {"economy", "business"}
     ungrounded = {**SEARCH_ARGS, "cabin_quote": "", "cabins": ["business"]}
     _, results = run_search_tool(ungrounded, USER_TEXT)
     assert {result.cabin for result in results} == {"economy", "business"}
@@ -130,13 +130,13 @@ def test_run_search_tool_rejects_return_dates_without_searching(monkeypatch, ret
 
 
 @pytest.mark.parametrize(("message", "cabin", "quote", "expected"), [
-    ("sea to jfk dec 6", None, None, {"economy", "premium_economy", "business", "first"}),
-    ("sea to jfk dec 6 business", "business", "business", {"business"}),
-    ("first class sea to jfk dec 6", "first", "first class", {"first"}),
-    ("sea to jfk dec 6 premium economy", "premium_economy", "premium economy", {"premium_economy"}),
-    ("economy sea to jfk dec 6", "economy", "economy", {"economy"}),
-    ("sea to jfk dec 6", "economy", None, {"economy", "premium_economy", "business", "first"}),
-    ("sea to jfk dec 6", "economy", "economy", {"economy", "premium_economy", "business", "first"}),
+    ("sea to jfk dec 6 2026", None, None, {"economy", "premium_economy", "business", "first"}),
+    ("sea to jfk dec 6 2026 business", "business", "business", {"business"}),
+    ("first class sea to jfk dec 6 2026", "first", "first class", {"first"}),
+    ("sea to jfk dec 6 2026 premium economy", "premium_economy", "premium economy", {"premium_economy"}),
+    ("economy sea to jfk dec 6 2026", "economy", "economy", {"economy"}),
+    ("sea to jfk dec 6 2026", "economy", None, {"economy", "premium_economy", "business", "first"}),
+    ("sea to jfk dec 6 2026", "economy", "economy", {"economy", "premium_economy", "business", "first"}),
 ])
 def test_chat_only_filters_explicit_cabins(monkeypatch, seats_aero_row, message, cabin, quote, expected):
     row = seats_aero_row("alaska", origin="SEA", destination="JFK", day="2026-12-06")
@@ -144,7 +144,7 @@ def test_chat_only_filters_explicit_cabins(monkeypatch, seats_aero_row, message,
         row.update({f"{prefix}Available": True, f"{prefix}MileageCost": str(points)})
     monkeypatch.setattr("backend.search._fetch_availability", lambda criteria: {"data": [row]})
     args = {"origin": "SEA", "destination": "JFK", "departure_date": "2026-12-06",
-            "origin_quote": "sea", "destination_quote": "jfk", "date_quote": "dec 6"}
+            "origin_quote": "sea", "destination_quote": "jfk", "date_quote": "dec 6 2026"}
     if cabin is not None:
         args["cabin"] = cabin
     if quote is not None:
@@ -167,7 +167,7 @@ def test_run_search_tool_reports_no_results():
 
 def test_run_search_tool_rejects_date_the_user_never_gave():
     args = {**SEARCH_ARGS, "date_quote": ""}
-    payload, results = run_search_tool(args, "Business class from Chicago to Tokyo")
+    payload, results = run_search_tool(args, "Business class from ORD to HND")
     assert payload["error"] == "Missing trip details"
     assert payload["missing"] == ["departure date"]
     assert "today's date" in payload["instruction"]
@@ -176,13 +176,13 @@ def test_run_search_tool_rejects_date_the_user_never_gave():
 
 def test_run_search_tool_rejects_quotes_not_in_user_text():
     args = {**SEARCH_ARGS, "origin_quote": "New York", "date_quote": "today"}
-    payload, results = run_search_tool(args, "Flights to Tokyo")
+    payload, results = run_search_tool(args, "Flights to HND")
     assert payload["missing"] == ["origin", "departure date"]
     assert results == []
 
 
 def test_run_search_tool_quotes_ignore_case_spacing_and_punctuation():
-    args = {**SEARCH_ARGS, "origin_quote": "chicago", "date_quote": " DEC  1. "}
+    args = {**SEARCH_ARGS, "origin_quote": "ord", "date_quote": " 2026-12-01. "}
     payload, results = run_search_tool(args, USER_TEXT)
     assert "error" not in payload
     assert results
@@ -193,7 +193,7 @@ def test_missing_date_is_sent_back_and_model_asks():
         tool_response({**SEARCH_ARGS, "departure_date": "2026-11-03", "date_quote": ""}),
         text_response("What date would you like to fly?"),
     )
-    response = chat(client, "Business class from Chicago to Tokyo")
+    response = chat(client, "Business class from ORD to HND")
     assert response.reply == "What date would you like to fly?"
     assert response.results == []
     assert sent_function_response(client, 1)["missing"] == ["departure date"]
@@ -201,17 +201,17 @@ def test_missing_date_is_sent_back_and_model_asks():
 
 def test_details_from_earlier_user_messages_count():
     history = [
-        ChatMessage(role="user", content="Business class from Chicago to Tokyo"),
+        ChatMessage(role="user", content="Business class from ORD to HND"),
         ChatMessage(role="assistant", content="What date would you like to fly?"),
     ]
     client = FakeClient(tool_response(SEARCH_ARGS), text_response("Here are 3 options."))
-    response = chat(client, "Dec 1", history)
+    response = chat(client, "2026-12-01", history)
     assert response.results == search_awards(criteria()).results
 
 
 def test_assistant_messages_do_not_count_as_user_details():
     history = [
-        ChatMessage(role="user", content="Business class from Chicago to Tokyo"),
+        ChatMessage(role="user", content="Business class from ORD to HND"),
         ChatMessage(role="assistant", content="Did you mean Dec 1?"),
     ]
     client = FakeClient(tool_response(SEARCH_ARGS), text_response("What date?"))
@@ -261,7 +261,9 @@ def test_unknown_tool_is_not_executed():
     client = FakeClient(tool_response({}, name="book_flight"), text_response("Sorry."))
     response = chat(client)
     assert response.results == []
-    assert "Unknown tool" in sent_function_response(client, 1)["error"]
+    assert response.status == "failed"
+    assert response.failure.code == "interpretation"
+    assert len(client.calls) == 1
 
 
 def test_tool_rounds_are_capped():
@@ -283,7 +285,9 @@ def test_timeout_gives_timeout_reply():
     client = FakeClient(tool_response(SEARCH_ARGS), httpx.ReadTimeout("timed out"))
     response = chat(client)
     assert response.reply == TIMEOUT_REPLY
-    assert response.results == []
+    assert response.results
+    assert response.status == "partial"
+    assert response.failure.code == "model_timeout"
 
 
 def test_connection_error_gives_unavailable_reply():
@@ -387,7 +391,7 @@ def test_system_prompt_includes_today():
     assert date.today().isoformat() in configs[0].system_instruction
     assert "Only one-way searches are supported" in configs[0].system_instruction
     assert "return_date" not in configs[0].tools[0].function_declarations[0].parameters_json_schema["properties"]
-    assert "departure_date_end" not in configs[0].tools[0].function_declarations[0].parameters_json_schema["properties"]
+    assert "departure_date_end" in configs[0].tools[0].function_declarations[0].parameters_json_schema["properties"]
     assert configs[0].automatic_function_calling.disable is True
 
 
@@ -409,9 +413,9 @@ FIRST_TURN = [
 
 
 def test_follow_up_changes_the_date_and_sends_history():
-    args = {**SEARCH_ARGS, "departure_date": "2026-12-03", "date_quote": "Dec 3"}
+    args = {**SEARCH_ARGS, "departure_date": "2026-12-03", "date_quote": "2026-12-03"}
     client = FakeClient(tool_response(args), text_response("ORD to HND, Dec 3: 2 options."))
-    response = chat(client, "Try Dec 3 instead", FIRST_TURN)
+    response = chat(client, "Try 2026-12-03 instead", FIRST_TURN)
     assert response.results
     assert {result.departure_date.isoformat() for result in response.results} == {"2026-12-03"}
     assert [content.role for content in client.calls[0]] == ["user", "model", "user"]
@@ -489,9 +493,9 @@ def test_invalid_filters_are_sent_back_to_model(bad):
 
 
 def test_two_searches_in_one_turn_are_combined():
-    dec_3 = {**SEARCH_ARGS, "departure_date": "2026-12-03", "date_quote": "Dec 3"}
+    dec_3 = {**SEARCH_ARGS, "departure_date": "2026-12-03", "date_quote": "2026-12-03"}
     client = FakeClient(tool_calls_response(SEARCH_ARGS, dec_3), text_response("Both dates."))
-    response = chat(client, "Dec 1 or Dec 3?", FIRST_TURN[:1])
+    response = chat(client, "2026-12-01 or 2026-12-03?", FIRST_TURN[:1])
     dates = [result.departure_date.isoformat() for result in response.results]
     assert dates.count("2026-12-01") == dates.count("2026-12-03") == 2
     sent = client.calls[1][-1].parts
@@ -519,11 +523,11 @@ def test_history_is_trimmed_to_recent_non_blank_messages():
 
 
 def test_details_only_in_trimmed_history_are_not_used():
-    history = [ChatMessage(role="user", content="From Chicago")] + [
+    history = [ChatMessage(role="user", content="From ORD")] + [
         ChatMessage(role="assistant" if index % 2 == 0 else "user", content="ok")
         for index in range(MAX_HISTORY_MESSAGES)
     ]
     client = FakeClient(tool_response(SEARCH_ARGS), text_response("Where from?"))
-    response = chat(client, "Business class to Tokyo on Dec 1", history)
+    response = chat(client, "Business class to HND on 2026-12-01", history)
     assert response.results == []
     assert sent_function_response(client, 1)["missing"] == ["origin"]

@@ -245,12 +245,14 @@ def build_openapi(server_url: str = "/") -> dict:
                 "post": _post_operation(
                     "Chat about award flights",
                     "Uses Gemini when a server-side API key is configured. Without a key, "
-                    "returns a message that chat is not connected yet. Send earlier messages "
-                    "in history for follow-ups such as a new date, cabin, program or points "
-                    "limit; results come from the searches in this request only. If Gemini "
-                    "times out, is over quota or the server's request limit is reached, the "
-                    "reply says so and results is empty. partial and warnings aggregate "
-                    "search coverage across tool calls independently of the model's reply.",
+                    "returns status=failed with failure.code=not_configured. Send earlier messages "
+                    "in history (only the last 20 nonblank messages are used) and normalized context "
+                    "for follow-ups. Explicit changes override context, which overrides old history. "
+                    "Clarification and confirmation do not search; confirmed=true searches the supplied "
+                    "context exactly once. searches captures every distinct executed search, including "
+                    "empty and failed searches. status, missing_fields and failure are machine-readable; "
+                    "HTTP 200 alone does not indicate search success. Later failures preserve completed "
+                    "groups with status=partial. partial and warnings describe bounded search coverage.",
                     refs[ChatRequest, "validation"],
                     refs[ChatResponse, "serialization"],
                     {

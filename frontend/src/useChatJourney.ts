@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { sendChatMessage } from './services/chat-api'
-import type { ChatResponse } from './services/chat-response'
+import type { ChatCriteria, ChatResponse } from './services/chat-response'
 import { captureSearchCriteria, searchAwards, type SearchCriteria, type SearchResponse } from './services/search-api'
 import type { TripDraft } from './components/TripEntry'
 import { validateTripFields } from './lib/trip-validation'
 import { loadAirportCatalog, type AirportCatalog } from './services/airports'
+import { captureChatRequest, criteriaLabel, draftWithCriteria, type ChatRequest } from './services/chat-context'
 
 export type SearchTurn = {
   id: number
@@ -13,7 +14,7 @@ export type SearchTurn = {
   error?: string
   response?: ChatResponse | SearchResponse
 } & (
-  | { source: 'chat'; payload: Readonly<{ message: string }> }
+  | { source: 'chat'; payload: ChatRequest }
   | { source: 'form'; payload: SearchCriteria }
 )
 
@@ -33,6 +34,13 @@ export default function useChatJourney() {
   const nextId = useRef(0)
   const mounted = useRef(true)
   const pending = turns.some((turn) => turn.status === 'pending')
+  const currentCriteria: ChatCriteria | undefined = [...turns].reverse().map((turn) => turn.source === 'form' ? turn.payload
+    : turn.response && 'reply' in turn.response ? turn.response.criteria : undefined).find(Boolean) ?? undefined
+  const acceptedCriteria = [...turns].reverse().map((turn) => {
+    if (turn.source === 'form') return turn.payload
+    const response = turn.response && 'reply' in turn.response ? turn.response : undefined
+    return response?.searches?.at(-1)?.criteria
+  }).find(Boolean)
 
   useEffect(() => {
     mounted.current = true
@@ -69,14 +77,20 @@ export default function useChatJourney() {
     try {
       const response = turn.source === 'form'
         ? await searchAwards(turn.payload, controller.signal)
-        : await sendChatMessage(turn.payload.message, controller.signal)
+        : await sendChatMessage(turn.payload, controller.signal)
       if (active.current !== controller) return
 
-      setDraft((current) => turn.source === 'chat' && current.message === turn.request
-        ? { ...current, message: '' }
-        : current)
+      const chat = 'reply' in response ? response : undefined
+      const failed = chat?.status === 'failed'
+      setDraft((current) => {
+        const next = turn.id === nextId.current && chat?.criteria
+          ? draftWithCriteria(current, chat.criteria) : current
+        return turn.source === 'chat' && current.message === turn.request && !failed && !chat?.failure
+          ? { ...next, message: '' } : next
+      })
       setTurns((previous) => previous.map((item) => item.id === turn.id
-        ? { ...item, status: 'success', response }
+        ? { ...item, status: failed ? 'failed' : 'success', response,
+          ...(failed ? { error: chat.reply || 'The search could not be completed. Please try again.' } : {}) }
         : item))
     } catch (error) {
       if (active.current !== controller) return
@@ -90,14 +104,14 @@ export default function useChatJourney() {
     }
   }
 
-  function submit(source: 'chat' | 'form') {
-    if (active.current) return
-    if (source === 'chat' && !draft.message.trim()) return
+  function submit(source: 'chat' | 'form'): boolean {
+    if (active.current) return false
+    if (source === 'chat' && !draft.message.trim()) return false
 
     if (source === 'form') {
       setFormAttempt((attempt) => attempt + 1)
       const now = new Date()
-      if (!airportCatalog || Object.keys(validateTripFields(draft, airportCatalog.airports, now)).length) return
+      if (!airportCatalog || Object.keys(validateTripFields(draft, airportCatalog.airports, now)).length) return false
 
       const payload = captureSearchCriteria(draft, airportCatalog.airports, now)
       const { origin, destination } = payload
@@ -111,9 +125,10 @@ export default function useChatJourney() {
       void run({ id: ++nextId.current, source, request, payload, status: 'pending' })
     } else {
       setFormAttempt(0)
-      const payload = Object.freeze({ message: draft.message })
+      const payload = captureChatRequest(draft.message, turns, acceptedCriteria)
       void run({ id: ++nextId.current, source, request: draft.message, payload, status: 'pending' })
     }
+    return true
   }
 
   function cancel() {
@@ -133,12 +148,33 @@ export default function useChatJourney() {
 
   function retry(turn: SearchTurn) {
     if (active.current || (turn.status !== 'failed' && turn.status !== 'canceled')) return
-    void run({ ...turn, status: 'pending', error: undefined }, true)
+    if (turn.response && 'reply' in turn.response && turn.response.failure?.retryable === false) return
+    void run({ ...turn, status: 'pending', error: undefined, response: undefined }, true)
+  }
+
+  function confirm(turn: SearchTurn) {
+    const response = turn.response && 'reply' in turn.response ? turn.response : undefined
+    if (active.current || turn.id !== turns.at(-1)?.id || response?.status !== 'confirmation' || !response.criteria) return
+    const payload = Object.freeze({ ...captureChatRequest('Confirm this trip.', turns, response.criteria), confirmed: true })
+    void run({ id: ++nextId.current, source: 'chat', request: payload.message, payload, status: 'pending' })
+  }
+
+  function prepareEdit() {
+    setFormAttempt(0)
+  }
+
+  function retrySearch(turn: SearchTurn, index: number) {
+    const response = turn.response && 'reply' in turn.response ? turn.response : undefined
+    const search = response?.searches?.[index]
+    if (active.current || response?.status !== 'partial' || search?.status !== 'failed' || !search.failure?.retryable) return
+    const message = `Retry search: ${criteriaLabel(search.criteria)}.`
+    const payload = Object.freeze({ message, context: search.criteria, confirmed: true })
+    void run({ id: ++nextId.current, source: 'chat', request: message, payload, status: 'pending' })
   }
 
   return {
     airportCatalog, airportStatus, loadAirports,
     draft, setDraft, turns, fieldErrors, formAttempt, lastActionId, pending,
-    submit, cancel, reset, retry,
+    submit, cancel, reset, retry, confirm, retrySearch, currentCriteria, prepareEdit,
   }
 }

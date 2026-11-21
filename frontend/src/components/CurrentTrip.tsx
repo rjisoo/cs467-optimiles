@@ -1,4 +1,5 @@
 import Icon from './Icon'
+import type { Ref } from 'react'
 import { Button } from './ui/button'
 import { awardDateLabel } from '../lib/trip-date'
 import type { ChatResult } from '../services/chat-response'
@@ -12,8 +13,15 @@ function airportLabel(selection: string | readonly string[]) {
   return codes.map((code) => airportNames[code] ? `${airportNames[code]} · ${code}` : code).join(' / ')
 }
 
-export default function CurrentTrip({ results, criteria }: { results: ChatResult[]; criteria?: SearchCriteria }) {
-  if (results.length === 0 && !criteria) return null
+export default function CurrentTrip({ results, criteria, onEdit, pending, editButtonRef }: {
+  results: ChatResult[]
+  criteria?: SearchCriteria
+  onEdit?: () => void
+  pending?: boolean
+  editButtonRef?: Ref<HTMLButtonElement>
+}) {
+  if (results.length === 0 && !criteria && !onEdit) return null
+  const hasCriteria = !!criteria || results.length > 0
 
   const first = results[0]
   const sameRoute = !!criteria || results.every((row) => row.origin === first.origin && row.destination === first.destination)
@@ -25,7 +33,7 @@ export default function CurrentTrip({ results, criteria }: { results: ChatResult
 
   return (
     <section className="current-trip panel toolbar" aria-label="Current trip">
-      <div>
+      {hasCriteria ? <div>
         <p className="availability-list-note">{criteria ? 'Requested trip · One way' : 'Returned route and dates'}</p>
         <p className="current-trip-route">
           {sameRoute ? <>
@@ -46,12 +54,14 @@ export default function CurrentTrip({ results, criteria }: { results: ChatResult
           <span>{criteria ? `${criteria.passengers} ${criteria.passengers === 1 ? 'adult' : 'adults'}`
             : 'Passenger count not supplied in results'}</span>
         </p>
-      </div>
+      </div> : <p>Add or complete your trip details.</p>}
       <Button
+        ref={editButtonRef}
         variant="outline"
-        disabled
+        disabled={pending || !onEdit}
         aria-label="Edit trip"
-        title="Send a new message to change your search"
+        aria-haspopup="dialog"
+        onClick={onEdit}
       >
         <Icon name="pencil" />
         Edit trip

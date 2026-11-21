@@ -26,7 +26,7 @@ export type TripDraft = {
   cabins: string[]
 }
 
-type TripEntryProps = {
+export type TripEntryProps = {
   draft: TripDraft
   onDraftChange: (draft: TripDraft) => void
   onSubmit: (source: 'chat' | 'form') => void
@@ -35,6 +35,7 @@ type TripEntryProps = {
   pending?: boolean
   onCancel?: () => void
   composerOnly?: boolean
+  formOnly?: boolean
   airportCatalog?: AirportCatalog
   airportStatus: 'idle' | 'loading' | 'ready' | 'failed'
   onLoadAirports: () => void
@@ -49,6 +50,7 @@ function TripEntry({
   pending = false,
   onCancel,
   composerOnly = false,
+  formOnly = false,
   airportCatalog,
   airportStatus,
   onLoadAirports,
@@ -165,7 +167,7 @@ function TripEntry({
 
   return (
     <Card className={`surface entry-choices${composerOnly ? ' journey-composer' : ''}`}>
-      <form
+      {!formOnly && <form
         className="entry-card chat-entry"
         aria-labelledby="chat-title"
         noValidate
@@ -222,15 +224,15 @@ function TripEntry({
             {pending ? 'Cancel search' : <Icon name="arrowUp" />}
           </Button>
         </div>
-      </form>
+      </form>}
 
       {!composerOnly && (
         <>
-          <div className="entry-divider">
+          {!formOnly && <div className="entry-divider">
             <Separator />
             <span>Or</span>
             <Separator />
-          </div>
+          </div>}
 
           <form
             ref={formRef}
