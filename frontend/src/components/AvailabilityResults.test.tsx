@@ -103,7 +103,7 @@ describe('returned award options', () => {
     expect(business).toHaveTextContent('From 40,000 ptsMinimum fees: $55.00 USD')
     expect(business).toHaveTextContent('Reported seats: 1')
     expect(grouped.getByRole('region', { name: 'First daily option' })).toHaveTextContent('60,000 pts')
-    expect(screen.getByText(/CPP from matched loaded trips · 1 matching rows/)).toBeVisible()
+    expect(screen.getByText(/Estimated CPP · 1 matching rows/)).toBeVisible()
     expect(screen.getByText('5 award options returned.')).toBeVisible()
   })
 
@@ -157,7 +157,7 @@ describe('returned award options', () => {
     ]).flat())
     const view = render(<AvailabilityResults searchId="one" response={data} />)
     expect(rows()).toHaveLength(5)
-    expect(screen.getByText(/CPP from matched loaded trips · 12 matching rows/)).toBeVisible()
+    expect(screen.getByText(/Estimated CPP · 12 matching rows/)).toBeVisible()
     expect(within(rows()[0]).getByRole('region', { name: 'Business daily option' })).toHaveTextContent('10 pts')
     await user.click(screen.getByRole('button', { name: 'Next' }))
     expect(rows()[0]).toHaveTextContent('Program 6')

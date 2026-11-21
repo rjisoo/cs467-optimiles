@@ -9,6 +9,7 @@ export type ChatResult = {
   source?: string | null
   search_passengers?: number | null
   cash_fare_usd?: number | null
+  taxes_currency?: string | null
   value_rating?: ValueRating | null
   value_warning?: string | null
   airline: string
@@ -81,6 +82,8 @@ function valueFields(row: Record<string, unknown>): Partial<ChatResult> {
   if (row.cash_fare_usd !== undefined) fields.cash_fare_usd = typeof row.cash_fare_usd === 'number'
     && Number.isFinite(row.cash_fare_usd) && row.cash_fare_usd > 0 && row.cash_fare_usd <= Number.MAX_SAFE_INTEGER / 100
     ? row.cash_fare_usd : null
+  if (row.taxes_currency !== undefined) fields.taxes_currency = typeof row.taxes_currency === 'string'
+    && /^[A-Za-z]{3}$/.test(row.taxes_currency.trim()) ? row.taxes_currency.trim().toUpperCase() : null
   if (row.value_rating !== undefined) fields.value_rating = typeof row.value_rating === 'string'
     && ['bad', 'fair', 'good', 'great', 'exceptional'].includes(row.value_rating) ? row.value_rating as ValueRating : null
   if (row.value_warning !== undefined) fields.value_warning = typeof row.value_warning === 'string' && row.value_warning.trim()

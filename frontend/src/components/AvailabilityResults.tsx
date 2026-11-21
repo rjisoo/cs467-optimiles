@@ -1,7 +1,7 @@
 import { Fragment, useId, useRef, useState, type ReactNode } from 'react'
 import type { ChatCabin, ChatResponse } from '../services/chat-response'
 import type { SearchResponse } from '../services/search-api'
-import { cabinOptions, compareLoadedTrips, groupSummaries, sortSummaries, type SummarySort, type ValueGroup } from '../services/availability-presentation'
+import { cabinOptions, compareDisplayedValues, compareLoadedTrips, groupSummaries, sortSummaries, type SummarySort } from '../services/availability-presentation'
 import { awardDateLabel } from '../lib/trip-date'
 import AvailabilitySummaryRow from './AvailabilitySummaryRow'
 import AvailabilityPagination from './AvailabilityPagination'
@@ -14,10 +14,6 @@ type Props = {
   searchId: string | number
   response: ChatResponse | SearchResponse
   message?: ReactNode
-}
-
-function comparisonScope(group: ValueGroup) {
-  return `${group.origin} → ${group.destination} · ${awardDateLabel(group.departure_date)} · ${group.passengers ?? 'Unknown'} ${group.passengers === 1 ? 'traveler' : 'travelers'}`
 }
 
 // Each response owns its filters and pagination.
@@ -47,20 +43,18 @@ function SearchResults({ response, message }: Props) {
   const loadedTrips = Object.values(states).flatMap((state) => state.status === 'success' ? state.response.trips : [])
   const allValues = compareLoadedTrips(response.results, loadedTrips)
   const comparison = compareLoadedTrips(filteredResults, loadedTrips, response.results)
-  const bestValues = comparison.groups.flatMap((group) => group.bestValue === null ? [] : [group.bestValue])
-  const bestValue = bestValues.length ? Math.max(...bestValues) : null
+  const { bestValue, bestKeys, bestSummaries } = compareDisplayedValues(filteredResults, comparison, allValues)
   const pointValues = comparison.groups.flatMap((group) => group.lowestPoints === null ? [] : [group.lowestPoints])
   const lowestPoints = pointValues.length ? Math.min(...pointValues) : null
-  const bestKeys = new Set(comparison.groups.filter((group) => group.bestValue === bestValue)
-    .flatMap((group) => [...group.bestKeys]))
   const lowestKeys = new Set(comparison.groups.filter((group) => group.lowestPoints === lowestPoints)
     .flatMap((group) => [...group.lowestKeys]))
-  const selectedHighlight = (highlight === 'value' ? bestKeys.size : lowestKeys.size) ? highlight : null
+  const selectedHighlight = (highlight === 'value' ? bestValue !== null : lowestKeys.size > 0) ? highlight : null
   const selectedEntries = selectedHighlight ? comparison.entries.filter((entry) => selectedHighlight === 'value'
     ? bestKeys.has(entry.key) : lowestKeys.has(entry.key)) : null
   const selectedKeys = selectedEntries ? new Set(selectedEntries.map((entry) => entry.key)) : undefined
   const rows = sortSummaries(summaries.filter((row) => cabins.some((cabin) => row.cabins[cabin])
-    && (!selectedEntries || selectedEntries.some((entry) => row.offers.includes(entry.result)))
+    && (!selectedEntries || selectedEntries.some((entry) => row.offers.includes(entry.result))
+      || (selectedHighlight === 'value' && row.offers.some((offer) => bestSummaries.has(offer))))
     && dates.includes(row.departure_date) && programs.includes(row.program)), sort)
   const currentPage = Math.min(page, Math.max(1, Math.ceil(rows.length / pageSize)))
   const warnings = response.warnings?.length ? response.warnings : response.partial
@@ -80,6 +74,7 @@ function SearchResults({ response, message }: Props) {
       ? bestKeys.has(item.key) : kind === 'points' && lowestKeys.has(item.key))
     const summary = entry && summaries.find((row) => row.offers.includes(entry.result))
     if (summary && entry) setOpen({ key: summary.key, cabin: entry.result.cabin, selection: 0 })
+    else if (kind === 'value') setOpen(null)
   }
 
   function sortState(field: SummarySort['field'], cabin?: ChatCabin) {
@@ -109,16 +104,14 @@ function SearchResults({ response, message }: Props) {
       {summaries.length > 0 && <>
         <AvailabilityHighlights
           cabinLabel={cabinOptions.filter((item) => cabins.includes(item.key)).map((item) => item.label).join(', ')}
-          scope={comparison.groups.length === 1 ? comparisonScope(comparison.groups[0])
-            : `${dates.length === 1 ? awardDateLabel(dates[0]) : `${dates.length} selected dates`} · ${comparison.groups.length} comparisons`}
+          scope={dates.length === 1 ? awardDateLabel(dates[0]) : `${dates.length} selected dates`}
           bestValue={bestValue} lowestPoints={lowestPoints}
-          eligibleCount={comparison.entries.filter((entry) => entry.eligible).length}
           loadedCount={comparison.entries.length} selected={selectedHighlight} onSelect={selectHighlight} />
         <section aria-label="Daily award options" className="availability-daily-options">
           <div className="availability-section-heading toolbar">
             <div>
               <h3 ref={tableHeading}>Compare dates & programs</h3>
-              <p>Starting points per cabin · CPP from matched loaded trips · {rows.length} matching rows</p>
+              <p>Points per cabin · Estimated CPP · {rows.length} matching rows</p>
             </div>
             <div className="availability-result-actions">
               <div className="availability-controls" role="group" aria-label="Result filters">
@@ -170,8 +163,12 @@ function SearchResults({ response, message }: Props) {
                 ? sort.cabin : cabins.find((cabin) => summary.cabins[cabin])!
               const expanded = open?.key === summary.key
               const panelId = `${detailsId}-${index}`
+              const summaryOnlyCabins = selectedHighlight === 'value' ? new Set(Object.values(summary.cabins)
+                .filter((offer) => bestSummaries.has(offer) && !selectedEntries?.some((entry) => entry.result.cabin === offer.cabin
+                  && summary.offers.includes(entry.result))).map((offer) => offer.cabin)) : undefined
               return <Fragment key={summary.key}>
-                <AvailabilitySummaryRow summary={summary} comparison={allValues} comparisonCabins={cabins} open={expanded}
+                <AvailabilitySummaryRow summary={summary} comparison={allValues} comparisonCabins={cabins}
+                  bestSummaries={bestSummaries} open={expanded}
                   detailsId={panelId} onToggle={() => {
                     setOpen(expanded ? null : { key: summary.key, cabin, selection: 0 })
                     if (!expanded) ids.forEach((id) => void load(id))
@@ -192,7 +189,7 @@ function SearchResults({ response, message }: Props) {
                     </div>}
                     {!pending && failedIds.length === 0 && <TripDetails key={`${open?.selection}-${selectedHighlight}`} cabin={open?.cabin ?? cabin}
                       entries={allValues.entries.filter((entry) => summary.offers.includes(entry.result))}
-                      bestKeys={bestKeys} visibleKeys={selectedKeys}
+                      bestKeys={bestKeys} visibleKeys={selectedKeys} summaryOnlyCabins={summaryOnlyCabins}
                       response={{
                         trips: loaded.flatMap((detail) => detail.trips),
                         booking_links: [...new Map(loaded.flatMap((detail) => detail.booking_links)

@@ -122,6 +122,11 @@ class Result(BaseModel):
         ge=0,
         description="Taxes and fees per passenger; null when not reported",
     )
+    taxes_currency: str | None = Field(
+        default=None,
+        pattern=r"^[A-Z]{3}$",
+        description="Explicit provider currency for this availability summary; null when missing or malformed",
+    )
     seats_available: int | None = Field(
         default=None,
         ge=0,
@@ -139,7 +144,7 @@ class Result(BaseModel):
     )
     cents_per_point: float | None = Field(
         default=None,
-        description="Null on availability summaries; exact-trip CPP requires matching points and verified USD fees",
+        description="Null on availability summaries; the frontend calculates labeled estimates from captured fares and points",
     )
     value_rating: ValueRating | None = Field(
         default=None,

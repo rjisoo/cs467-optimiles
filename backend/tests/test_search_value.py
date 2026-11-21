@@ -59,6 +59,23 @@ def test_independent_minima_do_not_invent_a_high_value_award(fares, monkeypatch,
     assert (result.cents_per_point, result.value_rating) == (None, None)
 
 
+@pytest.mark.parametrize(("currency", "expected"), [
+    ("USD", "USD"), (" usd ", "USD"), ("cad", "CAD"), (None, None),
+    ("", None), ("   ", None), ("US", None), ("USDD", None),
+    ("US$", None), ("ＵＳＤ", None), ("uſd", None), (True, None), (123, None),
+])
+def test_summary_preserves_only_explicit_currency_codes(monkeypatch, seats_aero_row, currency, expected):
+    from backend import search
+
+    row = seats_aero_row("american", origin="SFO", destination="NRT", day="2026-12-01",
+                        YAvailable=True, YMileageCost=12500, YTotalTaxes=1120, TaxesCurrency=currency)
+    monkeypatch.setattr(search, "_fetch_availability", lambda _: {"data": [row]})
+    [result] = search_awards(criteria()).results
+    assert result.taxes_currency == expected
+    assert result.points_cost == 12500
+    assert (result.cents_per_point, result.value_rating) == (None, None)
+
+
 def test_one_lookup_per_route_date_cabin(fares):
     _, calls = fares
     search_awards(criteria())  # all cabins: 3 economy rows + 2 business rows
@@ -111,6 +128,7 @@ def test_api_search_returns_value_fields(client, fares):
     )
     assert response.status_code == 200
     united = next(r for r in response.get_json()["results"] if r["program"] == "United MileagePlus")
+    assert united["taxes_currency"] == "USD"
     assert {k: united[k] for k in ("cash_fare_usd", "cents_per_point", "value_rating", "value_warning")} == {
         "cash_fare_usd": 2000.0, "cents_per_point": None, "value_rating": None, "value_warning": SUMMARY_VALUE_WARNING}
 
@@ -124,6 +142,7 @@ def test_chat_tool_passes_value_fields_to_the_llm(fares):
             "cabin_quote": "Business class"}
     payload, _ = run_search_tool(args, user_text)
     united = next(r for r in payload["results"] if r["program"] == "United MileagePlus")
+    assert united["taxes_currency"] == "USD"
     assert (united["cash_fare_usd"], united["value_rating"]) == (2000.0, None)
 
 

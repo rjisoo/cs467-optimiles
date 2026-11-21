@@ -12,9 +12,17 @@ const result = {
 describe('actual chat response boundary', () => {
   it('preserves fare provenance, warnings and rating metadata in both search and chat', () => {
     const valued = { ...result, source: 'american', search_passengers: 2, cash_fare_usd: 245.6,
-      value_rating: 'good', value_warning: 'Load trip details to compare value.' }
+      taxes_currency: 'USD', value_rating: 'good', value_warning: 'Load trip details to compare value.' }
     expect(validateChatResponse({ reply: '', results: [valued] }).results[0]).toEqual(valued)
     expect(validateSearchResponse({ results: [valued], message: null }).results[0]).toEqual(valued)
+  })
+
+  it('normalizes a summary currency without inventing one for legacy or malformed data', () => {
+    expect(validateChatResponse({ reply: '', results: [{ ...result, taxes_currency: ' usd ' }] }).results[0].taxes_currency).toBe('USD')
+    for (const taxes_currency of [null, '', 123, 'dollars', 'U$D']) {
+      expect(validateSearchResponse({ message: null, results: [{ ...result, taxes_currency }] }).results[0].taxes_currency).toBeNull()
+    }
+    expect(validateSearchResponse({ message: null, results: [result] }).results[0]).not.toHaveProperty('taxes_currency')
   })
 
   it('drops malformed optional value evidence without discarding a usable award', () => {
