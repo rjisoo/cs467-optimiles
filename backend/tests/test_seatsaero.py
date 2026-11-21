@@ -415,6 +415,7 @@ def test_map_get_trip_raw_response_to_client_json():
                 "cabin": "economy",
                 "points": 15000,
                 "points_cash_value": get_reward_value(15000),
+                "is_mixed_cabin": False,
                 "taxes_minor": 560,
                 "taxes_currency": "USD",
                 "reported_seats": 2,
@@ -569,11 +570,12 @@ def test_trip_mileage_numeric_types_and_reward_values(
 
 
 @pytest.mark.parametrize("field", ["MileageCost", "RemainingSeats"])
-def test_invalid_trip_numeric_fields_raise_upstream_error(raw_trip_payload, field):
+def test_invalid_trip_numeric_fields_remain_unknown_on_usable_flights(raw_trip_payload, field):
     raw_trip_payload["data"][0][field] = "not-a-number"
 
-    with pytest.raises(APIRouterError, match="Unexpected SeatsAero response"):
-        SeatsAeroAPI._to_client_json(RawGetTripResponse, raw_trip_payload)
+    response = SeatsAeroAPI._to_client_json(RawGetTripResponse, raw_trip_payload)
+    [trip] = response["trips"]
+    assert trip["points" if field == "MileageCost" else "reported_seats"] is None
 
 
 def test_validate_availability_on_reward_value():

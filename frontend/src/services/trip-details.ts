@@ -18,6 +18,7 @@ export type FlightTrip = {
   taxes_minor: number | null
   taxes_currency: string | null
   reported_seats: number | null
+  is_mixed_cabin?: boolean | null
   departs_at_local: string
   arrives_at_local: string
   duration_minutes: number
@@ -63,6 +64,10 @@ function optionalNumber(value: unknown): number | null {
   return value == null ? null : number(value)
 }
 
+function optionalEvidence(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null
+}
+
 function array(value: unknown): unknown[] {
   if (!Array.isArray(value)) return invalid()
   return value
@@ -85,9 +90,13 @@ export function validateTripDetails(input: unknown, requestedId: string): TripDe
       return {
         trip_id: text(trip.trip_id), availability_id: requestedId, source: text(trip.source),
         cabin: cabin === 'premium' ? 'premium_economy' : cabin,
-        points: optionalNumber(trip.points), cash_fees_usd: optionalNumber(trip.cash_fees_usd),
-        taxes_minor: optionalNumber(trip.taxes_minor),
-        taxes_currency: optionalText(trip.taxes_currency), reported_seats: optionalNumber(trip.reported_seats),
+        points: optionalNumber(trip.points), cash_fees_usd: optionalEvidence(trip.cash_fees_usd),
+        taxes_minor: optionalEvidence(trip.taxes_minor),
+        taxes_currency: typeof trip.taxes_currency === 'string' && trip.taxes_currency.trim() ? trip.taxes_currency : null,
+        reported_seats: optionalEvidence(trip.reported_seats),
+        ...(trip.is_mixed_cabin === undefined ? {} : {
+          is_mixed_cabin: typeof trip.is_mixed_cabin === 'boolean' ? trip.is_mixed_cabin : null,
+        }),
         departs_at_local: text(trip.departs_at_local), arrives_at_local: text(trip.arrives_at_local),
         duration_minutes: number(trip.duration_minutes, true), stops: number(trip.stops, true),
         carriers: array(trip.carriers).map(text), flight_numbers: array(trip.flight_numbers).map(text),

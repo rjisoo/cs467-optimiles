@@ -36,6 +36,10 @@ ROUND_LIMIT_REPLY = (
     "Sorry, I couldn't finish that search. Try rephrasing, or use the search form."
 )
 UNAVAILABLE_REPLY = "The assistant is unavailable right now. Please try the search form."
+OVERLOADED_REPLY = (
+    "The assistant service is temporarily busy. Please wait a moment and retry, "
+    "or use the search form."
+)
 TIMEOUT_REPLY = (
     "The assistant took too long to answer. Please try again, or use the search form."
 )
@@ -64,12 +68,13 @@ Rules:
 - Passengers default to 1; mention it when you use that default.
 - If the tool returns "Missing trip details", ask the user for exactly those details.
 - Only quote numbers that appear in the tool results. Do not do your own math.
-- value_rating says whether points beat paying cash: it compares cents_per_point with what a point
-  is reliably worth elsewhere. "bad" means pay cash and save the points; "fair" is about break-even;
-  "good", "great" and "exceptional" are increasingly strong uses of points. Quote value_rating,
-  cents_per_point and cash_fare_usd exactly as given, and call cash_fare_usd an estimated cash fare
-  (it may not be the same flight). Repeat any value_warning.
-- If value_rating is null, say there's no cash fare to compare for that option; never rate it yourself.
+- cash_fare_usd is an estimated fare for the route, date and cabin; it may be a different flight.
+  Quote it exactly as supplied. Summary points and fees can be independent minima, so their
+  cents_per_point and value_rating remain null even with a cash fare. Repeat any value_warning.
+- If value_rating is null, explain that exact trip points and known USD fees are needed to compare
+  value; never rate it yourself. Do not imply the cash fare is missing when cash_fare_usd is supplied.
+  Unknown fees must stay unrated. Fixed display tiers are bad/fair/good/great/exceptional, not
+  program-specific valuations or guaranteed cash-out values.
 - If cash_fees_usd or seats_available is null, say that it wasn't reported; don't guess.
 - If the tool returns partial=true, explain its warnings. No matches only means none in the searched data;
   never claim that no availability exists. Otherwise, use the tool's message to explain empty results.
@@ -284,6 +289,9 @@ def run_chat(
         if error.code == 429:
             logger.warning("Gemini quota exceeded: %s", error)
             return finish(BUSY_REPLY, "model_quota")
+        if error.code == 503:
+            logger.warning("Gemini temporarily unavailable (HTTP 503); returning a retryable chat response")
+            return finish(OVERLOADED_REPLY, "model_unavailable")
         logger.exception("Gemini API call failed")
         return finish(UNAVAILABLE_REPLY, "model_unavailable")
 

@@ -10,6 +10,27 @@ const result = {
 }
 
 describe('actual chat response boundary', () => {
+  it('preserves fare provenance, warnings and rating metadata in both search and chat', () => {
+    const valued = { ...result, source: 'american', search_passengers: 2, cash_fare_usd: 245.6,
+      value_rating: 'good', value_warning: 'Load trip details to compare value.' }
+    expect(validateChatResponse({ reply: '', results: [valued] }).results[0]).toEqual(valued)
+    expect(validateSearchResponse({ results: [valued], message: null }).results[0]).toEqual(valued)
+  })
+
+  it('drops malformed optional value evidence without discarding a usable award', () => {
+    const invalidValue = { source: 12, search_passengers: 0, cash_fare_usd: Infinity, value_rating: 'best', value_warning: {} }
+    expect(validateChatResponse({ reply: '', results: [{ ...result, ...invalidValue }] }).results[0])
+      .toEqual({ ...result, source: null, search_passengers: null, cash_fare_usd: null, value_rating: null, value_warning: null })
+  })
+
+  it('keeps an award when legacy optional fees or CPP are malformed', () => {
+    for (const value of [Infinity, NaN, true, '2.50', {}, -1]) {
+      expect(validateChatResponse({ reply: '', results: [{ ...result, cash_fees_usd: value }] }).results[0].cash_fees_usd).toBeNull()
+      if (value !== -1) expect(validateChatResponse({ reply: '', results: [{ ...result, cents_per_point: value }] })
+        .results[0].cents_per_point).toBeNull()
+    }
+  })
+
   it.each([{ partial: false, warnings: [] }, { partial: true, warnings: ['Some dates were not checked.'] },
     { partial: true }, { warnings: ['Cached availability may have changed.'] }, {}])('preserves optional coverage in both envelopes %j', (coverage) => {
     const chat = { reply: '', results: [], ...coverage }
@@ -54,7 +75,7 @@ describe('actual chat response boundary', () => {
 
   it.each([
     { points_cost: -1 }, { points_cost: '12500' }, { points_cost: 1.5 },
-    { cash_fees_usd: Infinity }, { seats_available: -1 }, { cabin: 'suite' },
+    { seats_available: -1 }, { cabin: 'suite' },
     { departure_date: '2026-02-30' }, { origin: '' }, { program: null },
   ])('rejects malformed result fields %j', (overrides) => {
     expect(() => validateChatResponse({ reply: 'Reply', results: [{ ...result, ...overrides }] })).toThrow('Invalid response')

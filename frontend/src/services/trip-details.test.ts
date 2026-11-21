@@ -38,7 +38,6 @@ describe('trip detail response boundary', () => {
     { ...payload, trips: [{ ...trip, availability_id: 'another' }] },
     { ...payload, trips: null }, { ...payload, booking_links: undefined },
     { ...payload, trips: [{ ...trip, points: '15000' }] },
-    { ...payload, trips: [{ ...trip, cash_fees_usd: '5.60' }] },
     { ...payload, trips: [{ ...trip, duration_minutes: -1 }] },
     { ...payload, trips: [{ ...trip, segments: [null] }] },
     { ...payload, trips: [{ ...trip, carriers: 'UA' }] },
@@ -46,6 +45,22 @@ describe('trip detail response boundary', () => {
     { ...payload, trips: [{ ...trip, segments: [{ ...trip.segments[0], carrier_name: 123 }] }] },
   ])('rejects invalid or mismatched details', (value) => {
     expect(() => validateTripDetails(value, 'availability-1')).toThrow('invalid details')
+  })
+
+  it('retains trips when optional fee, seat, currency or cabin evidence is malformed', () => {
+    const malformed = { ...trip, cash_fees_usd: '5.60', taxes_minor: true, taxes_currency: 123,
+      reported_seats: Infinity, is_mixed_cabin: 'false' }
+    expect(validateTripDetails({ ...payload, trips: [malformed] }, 'availability-1').trips[0]).toMatchObject({
+      trip_id: 'flight-1', cash_fees_usd: null, taxes_minor: null, taxes_currency: null,
+      reported_seats: null, is_mixed_cabin: null,
+    })
+    expect(validateTripDetails({ ...payload, trips: [{ ...trip, is_mixed_cabin: false }] }, 'availability-1')
+      .trips[0].is_mixed_cabin).toBe(false)
+  })
+
+  it.each(['', '  ', null, undefined, false, {}])('retains a usable trip with unknown fee currency %j', (taxes_currency) => {
+    expect(validateTripDetails({ ...payload, trips: [{ ...trip, taxes_currency, cash_fees_usd: null }] }, 'availability-1')
+      .trips[0]).toMatchObject({ trip_id: 'flight-1', points: 15000, taxes_currency: null, cash_fees_usd: null })
   })
 
   it.each([404, 502, 503, 504])('does not substitute data after HTTP %i', async (status) => {

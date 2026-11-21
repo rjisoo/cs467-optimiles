@@ -3,6 +3,7 @@
 search_awards() is the single entry point for both /api/search and the chat tool."""
 
 import json
+import math
 import os
 import re
 from concurrent.futures import ThreadPoolExecutor
@@ -15,7 +16,8 @@ from backend import cash_fare
 from backend.errors import UPSTREAM_ERRORS, describe_upstream_error
 from backend.ext_api import APIRouterError, APITimeout, seatsaero_api
 from backend.models import Cabin, GetTripResponse, Result, SearchCriteria, SearchResponse
-from backend.value import cents_per_point, rate_value
+from backend.value import SUMMARY_VALUE_WARNING, whole_number
+from backend.value import cents_per_point as cents_per_point
 
 DEFAULT_LOOKUPS_PER_SEARCH = 4
 SEARCH_MAX_PAGES = 3
@@ -28,17 +30,16 @@ def get_availability_trips(availability_id: str) -> GetTripResponse:
     """Load and validate trip details for one provider availability record."""
     if not os.getenv("SEATSAERO_TOKEN"):
         raise APIRouterError("SEATSAERO_TOKEN is not set in backend/.env")
-    payload = seatsaero_api.get_trip_to_client_json(availability_id, {})
+    payload = seatsaero_api.get_trip_to_client_json(availability_id, {"min_cabin_pct": 100})
     try:
         response = GetTripResponse.model_validate({**payload, "availability_id": availability_id})
         if any(trip.availability_id != availability_id for trip in response.trips):
             raise ValueError("Trip availability ID does not match the requested record")
         for trip in response.trips:
-            # Blank trip currency follows the provider's USD default. Explicit
-            # foreign currencies require an exchange rate and stay unconverted.
-            currency = (trip.taxes_currency or "USD").strip().upper() or "USD"
-            if trip.taxes_minor is not None and currency == "USD":
-                trip.cash_fees_usd = trip.taxes_minor / 100
+            currency = (trip.taxes_currency or "").strip().upper()
+            taxes = whole_number(trip.taxes_minor)
+            trip.cash_fees_usd = (taxes / 100 if taxes is not None and currency == "USD"
+                                  and trip.source not in {"qatar", "turkish", "singapore"} else None)
         return response
     except (ValidationError, TypeError, ValueError) as error:
         raise APIRouterError("Invalid trip details returned by the provider") from error
@@ -53,7 +54,7 @@ def _lookups_per_search() -> int:
 
 
 def add_value_ratings(results: list[Result]) -> list[Result]:
-    """Attach the estimated cash fare, cents per point and value rating to each result.
+    """Attach a cash fare benchmark without rating independent summary minima.
 
     One cash-fare lookup per distinct (route, date, cabin), in the order the results come
     (cheapest points first), capped per search to protect the SerpApi monthly quota.
@@ -72,15 +73,15 @@ def add_value_ratings(results: list[Result]) -> list[Result]:
     rated = []
     for result in results:
         fare = fares.get((result.origin, result.destination, result.departure_date.isoformat(), result.cabin))
-        if fare is None:
+        if (isinstance(fare, bool) or not isinstance(fare, (int, float))
+                or not 0 < fare <= 90071992547409.91 or not math.isfinite(fare)):
             rated.append(result)
             continue
-        rating, warning = rate_value(fare, result.cash_fees_usd, result.points_cost)
         rated.append(result.model_copy(update={
             "cash_fare_usd": fare,
-            "cents_per_point": cents_per_point(fare, result.cash_fees_usd, result.points_cost),
-            "value_rating": rating,
-            "value_warning": warning,
+            "cents_per_point": None,
+            "value_rating": None,
+            "value_warning": SUMMARY_VALUE_WARNING,
         }))
     return rated
 
@@ -246,11 +247,8 @@ def _to_result(row: dict, criteria: SearchCriteria, cabin: Cabin) -> Result | No
     prefix = _CABIN_PREFIX[cabin]
     if not row.get(f"{prefix}Available"):
         return None
-    try:
-        points_cost = int(row.get(f"{prefix}MileageCost") or 0)
-    except (TypeError, ValueError):
-        return None
-    if points_cost <= 0:
+    points_cost = whole_number(row.get(f"{prefix}MileageCost"))
+    if not points_cost:
         return None
     route = row.get("Route")
     if route is None:
@@ -279,12 +277,16 @@ def _to_result(row: dict, criteria: SearchCriteria, cabin: Cabin) -> Result | No
         return None
     # 0 seats on an available cabin means the program didn't report a count.
     seats = row.get(f"{prefix}RemainingSeats") or None
+    if isinstance(seats, bool):
+        seats = None
     if seats is not None and seats < criteria.passengers:
         return None
     source = row.get("Source") or route.get("Source") or ""
     return Result(
         availability_id=row.get("ID") if isinstance(row.get("ID"), str) else None,
         program=_PROGRAM_NAMES.get(source, source),
+        source=source or None,
+        search_passengers=criteria.passengers,
         airline=row.get(f"{prefix}Airlines") or "Not reported",
         origin=origin,
         destination=destination,
@@ -301,7 +303,7 @@ def _fees_usd(row: dict, prefix: str) -> float | None:
     """Taxes in dollars, or None when unreported (0) or not in USD (no conversion).
 
     seats.aero reports {c}TotalTaxes in cents of TaxesCurrency (US departure fee = 560)."""
-    taxes = row.get(f"{prefix}TotalTaxes")
-    if row.get("TaxesCurrency") != "USD" or not isinstance(taxes, int) or taxes <= 0:
+    taxes = whole_number(row.get(f"{prefix}TotalTaxes"))
+    if row.get("TaxesCurrency") != "USD" or not taxes:
         return None
     return taxes / 100

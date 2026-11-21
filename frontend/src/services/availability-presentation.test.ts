@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatResult } from './chat-response'
-import { cabinOptions, getPageNumbers, groupSummaries, sortSummaries } from './availability-presentation'
+import { cabinOptions, compareLoadedTrips, getPageNumbers, getSummaryValue, getTripValue, groupSummaries,
+  sortSummaries, tripValueKey, verifiedTripFees } from './availability-presentation'
+import type { FlightTrip } from './trip-details'
 
 function row(program: string, points: number, cabin: ChatResult['cabin'] = 'economy'): ChatResult {
   return { program, points_cost: points, cabin, airline: 'AA', departure_date: '2026-12-01',
@@ -95,5 +97,159 @@ describe('bounded page navigation', () => {
     expect(getPageNumbers(8, 1)).toEqual([1])
     expect(getPageNumbers(-2, 10)).toEqual([1, 2, 'ellipsis', 10])
     expect(getPageNumbers(99, 10)).toEqual([1, 'ellipsis', 9, 10])
+  })
+})
+
+const valuedResult: ChatResult = { ...row('United MileagePlus', 15000), availability_id: 'record-1', source: 'united',
+  search_passengers: 2, cash_fare_usd: 245.6 }
+const loadedTrip: FlightTrip = {
+  trip_id: 'trip-1', availability_id: 'record-1', source: 'united', cabin: 'economy', points: 15000,
+  cash_fees_usd: 5.6, taxes_minor: 560, taxes_currency: 'USD', reported_seats: 2, is_mixed_cabin: false,
+  departs_at_local: '2026-12-01T06:00:00', arrives_at_local: '2026-12-01T09:10:00', duration_minutes: 370,
+  stops: 0, carriers: ['UA'], carrier_names: ['United Airlines'], provider_updated_at: null, flight_numbers: ['UA123'],
+  segments: [{ flight_number: 'UA123', carrier: 'UA', carrier_name: 'United Airlines', origin_airport: 'JFK',
+    destination_airport: 'SEA', departs_at_local: null, arrives_at_local: null }],
+}
+const another = (overrides: Partial<FlightTrip> = {}): FlightTrip => ({ ...loadedTrip, trip_id: 'trip-2', points: 16000, ...overrides })
+
+describe('verified loaded-trip redemption value', () => {
+  it('uses exact-trip fees rather than summary minima, retains known zero, and rounds decimal ties half up', () => {
+    expect(getTripValue({ ...valuedResult, cash_fees_usd: 0 }, loadedTrip)).toMatchObject({ cpp: 1.6, fees: 5.6, rating: 'good' })
+    expect(getTripValue({ ...valuedResult, cash_fare_usd: 1200 }, { ...loadedTrip, points: 60000,
+      taxes_minor: 60000, cash_fees_usd: 600 })).toMatchObject({ cpp: 1, rating: 'fair' })
+    expect(getTripValue({ ...valuedResult, cash_fare_usd: 1.005 }, loadedTrip)).toBeNull()
+    expect(getTripValue({ ...valuedResult, cash_fare_usd: 100.5 }, { ...loadedTrip, points: 10000,
+      taxes_minor: 0, cash_fees_usd: 0 })).toMatchObject({ cpp: 1.01, fees: 0, rating: 'fair' })
+    expect(getTripValue({ ...valuedResult, cash_fare_usd: 5 }, { ...loadedTrip, points: 40 })).toMatchObject({ cpp: -1.5, rating: 'bad' })
+  })
+
+  it.each([
+    { cash_fees_usd: null }, { taxes_currency: null }, { taxes_currency: '' }, { taxes_currency: 'CAD' },
+    { taxes_minor: null }, { taxes_minor: 560.5 }, { taxes_minor: Number.MAX_SAFE_INTEGER + 1 },
+    { cash_fees_usd: 0 }, { source: 'qatar' }, { source: 'turkish' }, { source: 'singapore' },
+  ])('keeps unknown or inconsistent fee evidence unrated: %j', (overrides) => {
+    const trip = { ...loadedTrip, ...overrides }
+    expect(verifiedTripFees(trip)).toBeNull()
+    expect(getTripValue({ ...valuedResult, source: trip.source }, trip)).toBeNull()
+  })
+
+  it.each([
+    { points: 0 }, { points: 1.5 }, { points: Number.MAX_SAFE_INTEGER + 1 }, { is_mixed_cabin: true }, { is_mixed_cabin: null },
+    { source: 'delta' }, { availability_id: 'another' }, { cabin: 'business' },
+    { departs_at_local: '2026-12-02T06:00:00' }, { departs_at_local: '2026-12-01T99:00:00' },
+    { segments: [{ ...loadedTrip.segments[0], destination_airport: 'SFO' }] },
+  ])('does not attach a fare to incompatible trip evidence: %j', (overrides) => {
+    expect(getTripValue(valuedResult, { ...loadedTrip, ...overrides })).toBeNull()
+  })
+
+  it('does not infer a source or fare and accepts normalized explicit USD currency', () => {
+    expect(getTripValue({ ...valuedResult, source: null }, loadedTrip)).toBeNull()
+    expect(getTripValue({ ...valuedResult, cash_fare_usd: null }, loadedTrip)).toBeNull()
+    expect(getTripValue(valuedResult, { ...loadedTrip, taxes_currency: ' usd ' })?.cpp).toBe(1.6)
+  })
+})
+
+describe('loaded comparison scope', () => {
+  it('keeps all original offers, while grouping different sources or passenger counts separately', () => {
+    const offers = [valuedResult, { ...valuedResult, points_cost: 16000 }]
+    expect(groupSummaries(offers)[0].offers).toEqual(offers)
+    expect(groupSummaries([...offers, { ...valuedResult, search_passengers: 3 }, { ...valuedResult, source: 'delta' }])).toHaveLength(3)
+  })
+
+  it('deduplicates identical trips, includes all best ties and updates winners when later trips load', () => {
+    const tied = another({ points: 15000 })
+    let comparison = compareLoadedTrips([valuedResult, { ...valuedResult }], [loadedTrip, loadedTrip])
+    expect(comparison.entries).toHaveLength(1)
+    expect(comparison.bestKeys.size).toBe(0)
+    comparison = compareLoadedTrips([valuedResult], [loadedTrip, tied, another({ trip_id: 'third' })])
+    expect(comparison.bestKeys).toEqual(new Set([tripValueKey(loadedTrip), tripValueKey(tied)]))
+    const better = another({ trip_id: 'better', points: 12000 })
+    expect(compareLoadedTrips([valuedResult], [loadedTrip, tied, better]).bestKeys).toEqual(new Set([tripValueKey(better)]))
+    expect(getSummaryValue(valuedResult, comparison)?.cpp).toBe(1.6)
+  })
+
+  it('excludes missing fees, insufficient/unknown seats, mixed/unknown cabins and legacy passenger context from Best', () => {
+    for (const overrides of [{ cash_fees_usd: null }, { reported_seats: 1 }, { reported_seats: null },
+      { reported_seats: 2.5 }, { is_mixed_cabin: true }, { is_mixed_cabin: null }]) {
+      const comparison = compareLoadedTrips([valuedResult], [loadedTrip, another(overrides)])
+      expect(comparison.bestKeys.size).toBe(0)
+      expect(comparison.groups[0].entries).toHaveLength(2)
+    }
+    expect(compareLoadedTrips([{ ...valuedResult, search_passengers: undefined }], [loadedTrip, another()]).bestKeys.size).toBe(0)
+    expect(compareLoadedTrips([{ ...valuedResult, cash_fare_usd: 1 }], [loadedTrip, another()]).bestKeys.size).toBe(0)
+  })
+
+  it('invalidates conflicting duplicate trips and parent quotations until replaced', () => {
+    const conflict = { ...loadedTrip, taxes_minor: 1000, cash_fees_usd: 10 }
+    let comparison = compareLoadedTrips([valuedResult], [loadedTrip, conflict, another()])
+    expect(comparison.entries[0].value).toBeNull()
+    expect(comparison.bestKeys.size).toBe(0)
+    expect(getSummaryValue(valuedResult, comparison)).toBeNull()
+    comparison = compareLoadedTrips([valuedResult, { ...valuedResult, cash_fare_usd: 400 }], [loadedTrip, another()])
+    expect(comparison.entries.every((entry) => entry.value === null)).toBe(true)
+    expect(compareLoadedTrips([valuedResult], [conflict, another()]).bestKeys.size).toBe(1)
+  })
+
+  it('rejects conflicting booking sources and preserves separate genuine program offers', () => {
+    const conflictingSource = { ...valuedResult, source: 'delta' }
+    expect(compareLoadedTrips([valuedResult, conflictingSource], [loadedTrip, another()])
+      .entries.every((entry) => entry.value === null)).toBe(true)
+    const separateSource = { ...conflictingSource, availability_id: 'delta-record' }
+    const separateTrip = another({ source: 'delta', availability_id: 'delta-record' })
+    expect(compareLoadedTrips([valuedResult, separateSource], [loadedTrip, separateTrip]).entries).toHaveLength(2)
+    expect(compareLoadedTrips([valuedResult, separateSource], [loadedTrip, separateTrip]).bestKeys.size).toBe(1)
+    expect(compareLoadedTrips([valuedResult, { ...separateSource, cash_fare_usd: 400 }],
+      [loadedTrip, separateTrip]).bestKeys.size).toBe(0)
+  })
+
+  it.each([{ departure_date: '2026-12-02' }, { program: 'Another label', cash_fare_usd: 400 }])(
+    'does not erase conflicting parent evidence when a filter hides it: %j', (overrides) => {
+      const conflict = { ...valuedResult, ...overrides }
+      const otherResult = { ...valuedResult, availability_id: 'another-record', points_cost: 16000 }
+      const otherTrip = another({ availability_id: 'another-record' })
+      const allResults = [valuedResult, conflict, otherResult]
+      const comparison = compareLoadedTrips([valuedResult, otherResult], [loadedTrip, otherTrip], allResults)
+      expect(comparison.entries.find((entry) => entry.key === tripValueKey(loadedTrip))?.value).toBeNull()
+      expect(comparison.entries.find((entry) => entry.key === tripValueKey(otherTrip))?.value?.cpp).toBe(1.5)
+      expect(comparison.bestKeys.size).toBe(0)
+      expect(comparison.groups[0].lowestKeys).toEqual(new Set([tripValueKey(otherTrip)]))
+      expect(compareLoadedTrips([otherResult], [loadedTrip, otherTrip], allResults).entries).toHaveLength(1)
+      expect(compareLoadedTrips([valuedResult, otherResult], [loadedTrip, otherTrip]).bestKeys.size).toBe(1)
+    },
+  )
+
+  it('does not combine dates, routes, cabins or party sizes; filters use only supplied offers', () => {
+    for (const overrides of [{ departure_date: '2026-12-02' }, { origin: 'EWR' }, { cabin: 'business' as const }, { search_passengers: 3 }]) {
+      const second = { ...valuedResult, ...overrides, availability_id: 'second' }
+      const trip = another({ availability_id: 'second', cabin: second.cabin,
+        departs_at_local: `${second.departure_date}T06:00:00`, reported_seats: 4,
+        segments: [{ ...loadedTrip.segments[0], origin_airport: second.origin }] })
+      const comparison = compareLoadedTrips([valuedResult, second], [loadedTrip, trip])
+      expect(comparison.groups).toHaveLength(2)
+      expect(comparison.bestKeys.size).toBe(0)
+      expect(compareLoadedTrips([valuedResult], [loadedTrip, trip]).entries).toHaveLength(1)
+    }
+  })
+
+  it('does not present an ambiguous minimum-points trip value as the summary value', () => {
+    const comparison = compareLoadedTrips([valuedResult], [loadedTrip,
+      another({ points: 15000, taxes_minor: 1560, cash_fees_usd: 15.6 })])
+    expect(getSummaryValue(valuedResult, comparison)).toBeNull()
+    expect(getSummaryValue({ ...valuedResult, points_cost: 14000 }, comparison)).toBeNull()
+  })
+
+  it('retains only legitimate minimum-point keys, including fee-unknown ties but excluding identity conflicts', () => {
+    const tied = another({ points: 15000, cash_fees_usd: null })
+    const mismatch = another({ trip_id: 'wrong-route', points: 15000,
+      segments: [{ ...loadedTrip.segments[0], destination_airport: 'SFO' }] })
+    const conflict = another({ trip_id: 'conflict', points: 15000 })
+    const changed = { ...conflict, taxes_minor: 1000, cash_fees_usd: 10 }
+    const group = compareLoadedTrips([valuedResult], [loadedTrip, loadedTrip, tied, mismatch, conflict, changed]).groups[0]
+    expect(group.entries).toHaveLength(4)
+    expect(group.lowestPoints).toBe(15000)
+    expect(group.lowestKeys).toEqual(new Set([tripValueKey(loadedTrip), tripValueKey(tied)]))
+    const lower = another({ trip_id: 'lower', points: 10000 })
+    expect(compareLoadedTrips([valuedResult], [loadedTrip, lower]).groups[0].lowestKeys).toEqual(new Set([tripValueKey(lower)]))
+    expect(compareLoadedTrips([valuedResult], [conflict, changed]).groups[0].lowestKeys.size).toBe(0)
   })
 })

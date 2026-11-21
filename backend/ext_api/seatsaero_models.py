@@ -1,9 +1,11 @@
 from datetime import date as Date
 from datetime import datetime
+import math
 from typing import Any, ClassVar, TypeAlias
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .reward_eval import get_reward_value
+from backend.value import MAX_SAFE_INTEGER, whole_number
 
 RawNumber: TypeAlias = int | float | str | None
 NumericalNumber: TypeAlias = int | float | None
@@ -298,6 +300,7 @@ class RawGetTripFlights(SeatsAeroModel):
     availability_id: str
     source: str
     cabin: str
+    is_mixed_cabin: bool | None = None
     points: NumericalNumber
     taxes_minor: RawNumber = None
     taxes_currency: str | None = None
@@ -340,6 +343,27 @@ class RawGetTripFlights(SeatsAeroModel):
             if field_name not in result and upstream_name in result:
                 result[field_name] = result[upstream_name]
 
+        # Invalid optional costs/seats must not discard otherwise usable flights.
+        for field_name in ("points", "reported_seats"):
+            raw = result.get(field_name)
+            whole = whole_number(raw)
+            try:
+                number = float(raw)
+                result[field_name] = (whole if whole is not None else number
+                                     if not isinstance(raw, bool) and math.isfinite(number)
+                                     and 0 <= number <= MAX_SAFE_INTEGER and not number.is_integer() else None)
+            except (TypeError, ValueError, OverflowError):
+                result[field_name] = None
+        taxes = result.get("taxes_minor")
+        try:
+            number = float(taxes)
+            if (isinstance(taxes, bool) or not math.isfinite(number) or not 0 <= number <= MAX_SAFE_INTEGER
+                    or whole_number(taxes) is None and number.is_integer()):
+                result["taxes_minor"] = None
+        except (TypeError, ValueError, OverflowError):
+            result["taxes_minor"] = None
+        result["is_mixed_cabin"] = cls.mixed_cabin_status(result)
+
         for field_name in ("carriers", "flight_numbers"):
             field_value = result.get(field_name)
             if isinstance(field_value, str):
@@ -348,6 +372,40 @@ class RawGetTripFlights(SeatsAeroModel):
                 ]
 
         return result
+
+    @staticmethod
+    def mixed_cabin_status(value: dict) -> bool | None:
+        """Full-cabin requests are evidence unless reported details contradict them."""
+        ranks = {"economy": 0, "premium": 1, "premium_economy": 1, "business": 2, "first": 3}
+        wanted = ranks.get(value.get("cabin"))
+        if wanted is None:
+            return None
+        unknown = False
+        for name in ("MixedCabin", "IsMixedCabin", "is_mixed_cabin"):
+            if name not in value:
+                continue
+            if value[name] is True:
+                return True
+            unknown |= value[name] is not False
+        if "CabinPct" in value:
+            pct = whole_number(value["CabinPct"])
+            if pct is not None and pct < 100:
+                return True
+            unknown |= pct != 100
+        for segment in value.get("segments") or []:
+            if not isinstance(segment, dict):
+                continue
+            cabin = segment.get("Cabin", segment.get("cabin"))
+            if cabin is None or cabin == "":
+                continue
+            if not isinstance(cabin, str):
+                unknown = True
+                continue
+            rank = ranks.get(cabin)
+            if rank is not None and rank < wanted:
+                return True
+            unknown |= rank is None
+        return None if unknown else False
 
 
 class RawGetTripResponse(SeatsAeroModel):
@@ -394,6 +452,7 @@ class RawGetTripResponse(SeatsAeroModel):
                     "availability_id": trip.availability_id,
                     "source": trip.source,
                     "cabin": trip.cabin,
+                    "is_mixed_cabin": trip.is_mixed_cabin,
                     "points": trip.points,
                     "points_cash_value": validate_availability_on_reward_value(
                         trip.points

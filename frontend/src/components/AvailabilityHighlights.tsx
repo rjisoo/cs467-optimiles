@@ -1,58 +1,58 @@
-import type { AvailabilitySummary } from '../services/availability-api'
-import { getMockHighlights } from '../services/mock-comparisons'
-
-type Highlight = ReturnType<typeof getMockHighlights>[number]
+import './AwardValue.css'
 
 type Props = {
-  highlights: Highlight[]
-  summaries: AvailabilitySummary[]
-  selected: Highlight['kind'] | null
-  onSelect: (kind: Highlight['kind'] | null) => void
+  cabinLabel: string
+  scope: string
+  bestValue: number | null
+  lowestPoints: number | null
+  eligibleCount: number
+  loadedCount: number
+  selected: 'value' | 'points' | null
+  onSelect: (kind: 'value' | 'points' | null) => void
 }
 
-function metricLabel(highlight: Highlight) {
-  const { metric, kind } = highlight
-  if (metric === null) {
-    return 'Unavailable'
-  }
-  if (kind === 'value') {
-    return `${metric.toFixed(2)}¢ / pt`
-  }
-  return `${metric.toLocaleString('en-US')} pts`
-}
-
-export default function AvailabilityHighlights({ highlights, summaries, selected, onSelect }: Props) {
+export default function AvailabilityHighlights({ cabinLabel, scope, bestValue, lowestPoints,
+  eligibleCount, loadedCount, selected, onSelect }: Props) {
+  const highlights = [
+    { kind: 'value' as const, label: 'Best estimated value', metric: bestValue,
+      formatted: bestValue === null ? '' : `${bestValue.toFixed(2)}¢ / pt`,
+      detail: `${eligibleCount} eligible loaded ${eligibleCount === 1 ? 'trip' : 'trips'}` },
+    { kind: 'points' as const, label: 'Lowest points', metric: lowestPoints,
+      formatted: lowestPoints === null ? '' : `${lowestPoints.toLocaleString('en-US')} pts`,
+      detail: `Among ${loadedCount} loaded ${loadedCount === 1 ? 'trip' : 'trips'}` },
+  ].filter((highlight) => highlight.metric !== null)
+  if (!highlights.length) return null
   return (
     <section className="availability-highlight-section" aria-label="Award highlights">
+      <div className="availability-highlight-heading">
+        <h3>Highlights <span>· {cabinLabel}</span></h3>
+        <p>{scope}</p>
+      </div>
       <div className="availability-highlights">
-        {highlights.map((highlight) => {
-          const ids = new Set(highlight.entries.map((entry) => entry.availability_id))
-          const matchingDates = summaries
-            .filter((row) => ids.has(row.availability_id))
-            .map((row) => row.date)
-          const dates = new Set(matchingDates)
-          return (
+        {highlights.map((highlight) => (
             <button
               key={highlight.kind}
-              className="surface availability-highlight"
+              type="button"
+              className="availability-highlight"
+              data-kind={highlight.kind}
               aria-pressed={selected === highlight.kind}
-              disabled={highlight.metric === null}
               onClick={() => onSelect(selected === highlight.kind ? null : highlight.kind)}
             >
               <span className="availability-highlight-row toolbar">
                 <span className="availability-highlight-copy">
-                  <span className="availability-highlight-label">{highlight.label}</span>
-                  <span className="availability-highlight-count">
-                    {highlight.entries.length} mock {highlight.entries.length === 1 ? 'offer' : 'offers'}
-                    {' · '}{dates.size} {dates.size === 1 ? 'date' : 'dates'}
+                  <span className="availability-highlight-label">
+                    {highlight.kind === 'value' && <span aria-hidden="true">★ </span>}{highlight.label}
                   </span>
+                  <span className="availability-highlight-count">{highlight.detail}</span>
                 </span>
-                <strong className="availability-highlight-metric">{metricLabel(highlight)}</strong>
+                <strong className="availability-highlight-metric">{highlight.formatted}</strong>
               </span>
             </button>
-          )
-        })}
+        ))}
       </div>
+      {bestValue !== null && <p className="availability-highlight-note">
+        Higher CPP means more value · Cash fares are estimates · Unknown fees are excluded from value comparisons
+      </p>}
     </section>
   )
 }

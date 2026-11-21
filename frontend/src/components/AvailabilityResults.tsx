@@ -1,11 +1,12 @@
 import { Fragment, useId, useRef, useState, type ReactNode } from 'react'
 import type { ChatCabin, ChatResponse } from '../services/chat-response'
 import type { SearchResponse } from '../services/search-api'
-import { cabinOptions, groupSummaries, sortSummaries, type SummarySort } from '../services/availability-presentation'
+import { cabinOptions, compareLoadedTrips, groupSummaries, sortSummaries, type SummarySort, type ValueGroup } from '../services/availability-presentation'
 import { awardDateLabel } from '../lib/trip-date'
 import AvailabilitySummaryRow from './AvailabilitySummaryRow'
 import AvailabilityPagination from './AvailabilityPagination'
 import AvailabilityFilter from './AvailabilityFilter'
+import AvailabilityHighlights from './AvailabilityHighlights'
 import TripDetails from './TripDetails'
 import useTripDetails from '../useTripDetails'
 
@@ -13,6 +14,10 @@ type Props = {
   searchId: string | number
   response: ChatResponse | SearchResponse
   message?: ReactNode
+}
+
+function comparisonScope(group: ValueGroup) {
+  return `${group.origin} → ${group.destination} · ${awardDateLabel(group.departure_date)} · ${group.passengers ?? 'Unknown'} ${group.passengers === 1 ? 'traveler' : 'travelers'}`
 }
 
 // Each response owns its filters and pagination.
@@ -35,9 +40,29 @@ function SearchResults({ response, message }: Props) {
   const [sort, setSort] = useState<SummarySort>({ field: 'points', cabin: initialCabins[0], direction: 'asc' })
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(5)
+  const [highlight, setHighlight] = useState<'value' | 'points' | null>(null)
   const tableHeading = useRef<HTMLHeadingElement>(null)
+  const filteredResults = response.results.filter((row) => cabins.includes(row.cabin)
+    && dates.includes(row.departure_date) && programs.includes(row.program))
+  const loadedTrips = Object.values(states).flatMap((state) => state.status === 'success' ? state.response.trips : [])
+  const allValues = compareLoadedTrips(response.results, loadedTrips)
+  const comparison = compareLoadedTrips(filteredResults, loadedTrips, response.results)
+  const bestValues = comparison.groups.flatMap((group) => group.bestValue === null ? [] : [group.bestValue])
+  const bestValue = bestValues.length ? Math.max(...bestValues) : null
+  const pointValues = comparison.groups.flatMap((group) => group.lowestPoints === null ? [] : [group.lowestPoints])
+  const lowestPoints = pointValues.length ? Math.min(...pointValues) : null
+  const bestKeys = new Set(comparison.groups.filter((group) => group.bestValue === bestValue)
+    .flatMap((group) => [...group.bestKeys]))
+  const lowestKeys = new Set(comparison.groups.filter((group) => group.lowestPoints === lowestPoints)
+    .flatMap((group) => [...group.lowestKeys]))
+  const selectedHighlight = (highlight === 'value' ? bestKeys.size : lowestKeys.size) ? highlight : null
+  const selectedEntries = selectedHighlight ? comparison.entries.filter((entry) => selectedHighlight === 'value'
+    ? bestKeys.has(entry.key) : lowestKeys.has(entry.key)) : null
+  const selectedKeys = selectedEntries ? new Set(selectedEntries.map((entry) => entry.key)) : undefined
   const rows = sortSummaries(summaries.filter((row) => cabins.some((cabin) => row.cabins[cabin])
+    && (!selectedEntries || selectedEntries.some((entry) => row.offers.includes(entry.result)))
     && dates.includes(row.departure_date) && programs.includes(row.program)), sort)
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(rows.length / pageSize)))
   const warnings = response.warnings?.length ? response.warnings : response.partial
     ? ['Search coverage is incomplete. Results may not include all available awards.'] : []
 
@@ -46,6 +71,15 @@ function SearchResults({ response, message }: Props) {
     setSort({ field, cabin, direction: reverse ? 'desc' : 'asc' })
     setPage(1)
     setOpen(null)
+  }
+
+  function selectHighlight(kind: 'value' | 'points' | null) {
+    setHighlight(kind)
+    setPage(1)
+    const entry = comparison.entries.find((item) => kind === 'value'
+      ? bestKeys.has(item.key) : kind === 'points' && lowestKeys.has(item.key))
+    const summary = entry && summaries.find((row) => row.offers.includes(entry.result))
+    if (summary && entry) setOpen({ key: summary.key, cabin: entry.result.cabin, selection: 0 })
   }
 
   function sortState(field: SummarySort['field'], cabin?: ChatCabin) {
@@ -73,11 +107,18 @@ function SearchResults({ response, message }: Props) {
         {warnings.map((warning, index) => <p key={index}>{warning}</p>)}
       </section>}
       {summaries.length > 0 && <>
+        <AvailabilityHighlights
+          cabinLabel={cabinOptions.filter((item) => cabins.includes(item.key)).map((item) => item.label).join(', ')}
+          scope={comparison.groups.length === 1 ? comparisonScope(comparison.groups[0])
+            : `${dates.length === 1 ? awardDateLabel(dates[0]) : `${dates.length} selected dates`} · ${comparison.groups.length} comparisons`}
+          bestValue={bestValue} lowestPoints={lowestPoints}
+          eligibleCount={comparison.entries.filter((entry) => entry.eligible).length}
+          loadedCount={comparison.entries.length} selected={selectedHighlight} onSelect={selectHighlight} />
         <section aria-label="Daily award options" className="availability-daily-options">
           <div className="availability-section-heading toolbar">
             <div>
               <h3 ref={tableHeading}>Compare dates & programs</h3>
-              <p>Reported points per cabin · {rows.length} matching rows</p>
+              <p>Starting points per cabin · CPP from matched loaded trips · {rows.length} matching rows</p>
             </div>
             <div className="availability-result-actions">
               <div className="availability-controls" role="group" aria-label="Result filters">
@@ -87,13 +128,14 @@ function SearchResults({ response, message }: Props) {
                     setCabins(values as ChatCabin[])
                     setPage(1)
                     setOpen(null)
+                    setHighlight(null)
                   }} />
                 <AvailabilityFilter label="Dates" allLabel="All dates" values={dates}
                   options={availableDates.map((date) => ({ value: date, label: awardDateLabel(date) }))}
-                  onChange={(values) => { setDates(values); setPage(1); setOpen(null) }} />
+                  onChange={(values) => { setDates(values); setPage(1); setOpen(null); setHighlight(null) }} />
                 <AvailabilityFilter label="Programs" allLabel="All programs" values={programs}
                   options={availablePrograms.map((program) => ({ value: program, label: program }))}
-                  onChange={(values) => { setPrograms(values); setPage(1); setOpen(null) }} />
+                  onChange={(values) => { setPrograms(values); setPage(1); setOpen(null); setHighlight(null) }} />
               </div>
             </div>
           </div>
@@ -116,7 +158,7 @@ function SearchResults({ response, message }: Props) {
                 </button>
               </th>)}
             </tr></thead>
-            <tbody>{rows.slice((page - 1) * pageSize, page * pageSize).map((summary, index) => {
+            <tbody>{rows.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((summary, index) => {
               const ids = summary.availabilityIds
               const pending = ids.some((id) => !states[id] || states[id].status === 'pending')
               const failedIds = ids.filter((id) => states[id]?.status === 'failed')
@@ -129,7 +171,7 @@ function SearchResults({ response, message }: Props) {
               const expanded = open?.key === summary.key
               const panelId = `${detailsId}-${index}`
               return <Fragment key={summary.key}>
-                <AvailabilitySummaryRow summary={summary} comparisonCabins={cabins} open={expanded}
+                <AvailabilitySummaryRow summary={summary} comparison={allValues} comparisonCabins={cabins} open={expanded}
                   detailsId={panelId} onToggle={() => {
                     setOpen(expanded ? null : { key: summary.key, cabin, selection: 0 })
                     if (!expanded) ids.forEach((id) => void load(id))
@@ -148,7 +190,9 @@ function SearchResults({ response, message }: Props) {
                       <button className="compact-button compact-button--outline"
                         onClick={() => failedIds.forEach((id) => void load(id))}>Retry trip details</button>
                     </div>}
-                    {!pending && failedIds.length === 0 && <TripDetails key={open?.selection} cabin={open?.cabin ?? cabin}
+                    {!pending && failedIds.length === 0 && <TripDetails key={`${open?.selection}-${selectedHighlight}`} cabin={open?.cabin ?? cabin}
+                      entries={allValues.entries.filter((entry) => summary.offers.includes(entry.result))}
+                      bestKeys={bestKeys} visibleKeys={selectedKeys}
                       response={{
                         trips: loaded.flatMap((detail) => detail.trips),
                         booking_links: [...new Map(loaded.flatMap((detail) => detail.booking_links)
@@ -160,7 +204,7 @@ function SearchResults({ response, message }: Props) {
             })}</tbody>
           </table>
           {rows.length === 0 && <p className="availability-empty" role="status">No results match these filters.</p>}
-          <AvailabilityPagination label="Daily options pagination" unit="rows" page={page}
+          <AvailabilityPagination label="Daily options pagination" unit="rows" page={currentPage}
             pageSize={pageSize} total={rows.length}
             onPageChange={(next, scroll) => {
               setPage(next)
@@ -169,11 +213,6 @@ function SearchResults({ response, message }: Props) {
             }}
             onPageSizeChange={(size) => { setPageSize(size); setPage(1); setOpen(null) }} />
         </section>
-        <details className="availability-provenance">
-          <summary>Available details & limitations</summary>
-          <p>Each row combines cabins for one date, route and mileage program, showing the lowest reported points per cabin. Cash fees are in USD; CPP is shown only when reported.</p>
-          <p>Reported seat counts do not confirm availability for your whole party. Expand an identified result to load its reported trips. Missing schedules stay unreported.</p>
-        </details>
       </>}
     </section>
   )

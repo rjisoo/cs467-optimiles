@@ -447,7 +447,7 @@
 }
 
 .availability-flight-rows > .availability-flight {
-  min-width: 600px;
+  min-width: 810px;
 }
 
 .availability-flight-scroll-hint {
@@ -465,7 +465,7 @@
 
 .availability-flight-summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(155px, 1.5fr) minmax(65px, .6fr) minmax(100px, 1fr) minmax(100px, .9fr) minmax(210px, 1.8fr);
   gap: 16px;
   align-items: center;
   padding-block: 6px 5px;
@@ -553,6 +553,28 @@
 
 .availability-flight-price {
   justify-content: space-between;
+}
+
+.availability-flight-value {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.availability-cash-benchmark {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-block: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-compact);
+  background: var(--color-accent-surface);
+  font-size: 13px;
+}
+
+.availability-cash-benchmark span {
+  color: var(--color-text-muted);
 }
 
 .availability-flight-toggle {
@@ -650,20 +672,6 @@
 .availability-cabin-unreported {
   font-size: var(--font-compact-label);
   line-height: 18px;
-}
-
-/* Data provenance and empty results */
-.availability-provenance {
-  color: var(--color-text-muted);
-  font-size: var(--font-compact-label);
-}
-
-.availability-provenance summary {
-  cursor: pointer;
-}
-
-.availability-provenance p {
-  margin-top: 10px;
 }
 
 .availability-empty {
