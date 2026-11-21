@@ -1,4 +1,4 @@
-import type { ChatCabin } from '../services/chat-response'
+import type { ChatCabin, ChatResult } from '../services/chat-response'
 import { cabinOptions, getSummaryValue, type AvailabilitySummary, type ValueComparison } from '../services/availability-presentation'
 import { awardDateLabel } from '../lib/trip-date'
 import Icon from './Icon'
@@ -8,6 +8,7 @@ type Props = {
   summary: AvailabilitySummary
   comparison: ValueComparison
   comparisonCabins: ChatCabin[]
+  bestSummaries: Set<ChatResult>
   open: boolean
   detailsId: string
   onToggle: () => void
@@ -16,7 +17,7 @@ type Props = {
 
 const dollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
 
-export default function AvailabilitySummaryRow({ summary, comparison, comparisonCabins, open, detailsId, onToggle, onSelectCabin }: Props) {
+export default function AvailabilitySummaryRow({ summary, comparison, comparisonCabins, bestSummaries, open, detailsId, onToggle, onSelectCabin }: Props) {
   const canExpand = summary.availabilityIds.length > 0
   return (
     <tr className="availability-day" aria-label={`${awardDateLabel(summary.departure_date)} ${summary.program}`}
@@ -66,7 +67,7 @@ export default function AvailabilitySummaryRow({ summary, comparison, comparison
                 {offer.cash_fare_usd != null && <p className="availability-list-note">
                   Est. cash fare: {dollars.format(offer.cash_fare_usd)} USD / person
                 </p>}
-                <AwardValue compact value={getSummaryValue(offer, comparison)} />
+                <AwardValue compact value={getSummaryValue(offer, comparison)} best={bestSummaries.has(offer)} />
                 {offer.seats_available !== null && <p className="availability-list-note">
                   Reported seats: {offer.seats_available}
                 </p>}

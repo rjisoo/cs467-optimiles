@@ -18,7 +18,10 @@ function ReportedTime({ value, compact = false }: { value: string | null; compac
 
 const dollars = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
 
-function fees(trip: FlightTrip) {
+function fees(trip: FlightTrip, entry?: ValueEntry) {
+  if (entry?.value?.feeBasis === 'summary_currency' && entry.value.fees !== null) {
+    return `${dollars.format(entry.value.fees)} USD fees`
+  }
   const amount = verifiedTripFees(trip)
   return amount === null ? 'USD fees unavailable' : `${dollars.format(amount)} USD fees`
 }
@@ -95,12 +98,11 @@ function TripRow({ trip, route, entry, best }: { trip: FlightTrip; route?: strin
       <div className="availability-flight-price">
         <div className="availability-fare">
           <strong>{trip.points === null ? 'Points not reported' : <>{trip.points.toLocaleString('en-US')}<small> pts</small></>}</strong>
-          <span>{fees(trip)}</span>
+          <span>{fees(trip, entry)}</span>
         </div>
       </div>
       <div className="availability-flight-value">
-        <AwardValue value={entry?.value} best={best}
-          bestScope={entry ? `${entry.result.origin} → ${entry.result.destination} · ${entry.result.departure_date} · ${entry.trip.cabin.replace('_', ' ')} · ${entry.result.search_passengers} ${entry.result.search_passengers === 1 ? 'traveler' : 'travelers'}` : undefined} />
+        <AwardValue value={entry?.value} best={best} />
         <button className="compact-button compact-button--icon availability-flight-toggle"
           aria-label={`${open ? 'Hide' : 'Show'} flight details for ${flights}`}
           aria-expanded={open} aria-controls={detailsId} onClick={() => setOpen(!open)}>
@@ -134,9 +136,9 @@ function TripRow({ trip, route, entry, best }: { trip: FlightTrip; route?: strin
   </article>
 }
 
-export default function TripDetails({ response, cabin, route, entries = [], bestKeys, visibleKeys }: {
+export default function TripDetails({ response, cabin, route, entries = [], bestKeys, visibleKeys, summaryOnlyCabins }: {
   response: Pick<TripDetailsResponse, 'trips' | 'booking_links'>; cabin: ChatCabin; route?: string
-  entries?: ValueEntry[]; bestKeys?: Set<string>; visibleKeys?: Set<string>
+  entries?: ValueEntry[]; bestKeys?: Set<string>; visibleKeys?: Set<string>; summaryOnlyCabins?: Set<string>
 }) {
   const [page, setPage] = useState(1)
   const [sort, setSort] = useState('points')
@@ -152,7 +154,7 @@ export default function TripDetails({ response, cabin, route, entries = [], best
   const cashFare = fares.length === 1 ? fares[0] : null
   const uniqueTrips = [...new Map(response.trips.map((trip) => [tripValueKey(trip), trip])).values()]
   const trips = uniqueTrips.filter((trip) => trip.cabin === selectedCabin
-    && (!visibleKeys || visibleKeys.has(tripValueKey(trip))))
+    && (!visibleKeys || summaryOnlyCabins?.has(trip.cabin) || visibleKeys.has(tripValueKey(trip))))
   if (sort !== 'reported') trips.sort((a, b) => {
     if (sort === 'departure') return a.departs_at_local.localeCompare(b.departs_at_local)
     const first = sort === 'value' ? entriesByKey.get(tripValueKey(a))?.value?.cpp ?? null : sort === 'points' ? a.points : a.duration_minutes
@@ -198,7 +200,7 @@ export default function TripDetails({ response, cabin, route, entries = [], best
         {trips.slice((page - 1) * 5, page * 5).map((trip) => <TripRow key={tripValueKey(trip)} trip={trip} route={route}
           entry={entriesByKey.get(tripValueKey(trip))} best={bestKeys?.has(tripValueKey(trip)) ?? false} />)}
       </div>
-      <p className="availability-list-note">{cabinEntries.length} matched loaded trips · {cabinEntries.filter((entry) => entry.eligible).length} eligible for value comparison. Unknown fees, seats or cabin evidence are excluded.</p>
+      <p className="availability-list-note">{cabinEntries.length} matched loaded trips · {cabinEntries.filter((entry) => entry.eligible).length} with estimated CPP.</p>
     </>}
     {trips.length > 5 && <AvailabilityPagination label="Trip pagination" unit="trips" page={page}
       pageSize={5} total={trips.length} onPageChange={(next, scroll) => {

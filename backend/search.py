@@ -282,6 +282,9 @@ def _to_result(row: dict, criteria: SearchCriteria, cabin: Cabin) -> Result | No
     if seats is not None and seats < criteria.passengers:
         return None
     source = row.get("Source") or route.get("Source") or ""
+    currency = row.get("TaxesCurrency")
+    currency = (currency.strip().upper() if isinstance(currency, str)
+                and re.fullmatch(r"[A-Za-z]{3}", currency.strip()) else None)
     return Result(
         availability_id=row.get("ID") if isinstance(row.get("ID"), str) else None,
         program=_PROGRAM_NAMES.get(source, source),
@@ -294,6 +297,7 @@ def _to_result(row: dict, criteria: SearchCriteria, cabin: Cabin) -> Result | No
         cabin=cabin,
         points_cost=points_cost,
         cash_fees_usd=_fees_usd(row, prefix),
+        taxes_currency=currency,
         seats_available=seats,
         # Value fields are filled later by add_value_ratings() (one cash-fare lookup per route).
     )

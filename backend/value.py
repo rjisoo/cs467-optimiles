@@ -23,7 +23,10 @@ _TIERS: tuple[tuple[float, ValueRating], ...] = (
     (1.0, "fair"),
 )
 
-SUMMARY_VALUE_WARNING = "Load trip details to compare value using the same flight's points and fees."
+SUMMARY_VALUE_WARNING = (
+    "Estimated value may exclude fees when they cannot be verified. "
+    "Load trip details for each flight's points, fees and calculation basis."
+)
 
 
 def _decimal(value: object) -> Decimal | None:

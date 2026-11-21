@@ -6,11 +6,12 @@ runs the search; every number the user sees comes from search.py."""
 import json
 import logging
 import re
-from datetime import datetime
+from datetime import date, datetime
 from typing import get_args
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
+from backend.airports import airport_today
 from backend.errors import UPSTREAM_ERRORS, describe_upstream_error
 from backend.models import Cabin, ChatCriteria, Result, SearchResponse, StructuredSearchCriteria
 from backend.search import search_awards
@@ -43,6 +44,15 @@ _QUOTE_DESCRIPTION = (
     "(e.g. {example}). Empty string if the user never said it."
 )
 _QUOTE_STRIP = " \t\n\"'.,;:!?"
+_MONTH = (
+    r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
+    r"Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
+)
+_DATE_QUOTE = re.compile(
+    rf"\b(?:\d{{4}}-\d{{2}}-\d{{2}}|(?:{_MONTH}\s+\d{{1,2}}(?:st|nd|rd|th)?|"
+    rf"\d{{1,2}}(?:st|nd|rd|th)?\s+{_MONTH})(?:,?\s+\d{{4}})?)\b"
+    r"(?![\w]|\s*[,./-]?\s*\d)", re.I,
+)
 
 # Refinement arguments. They only narrow results the search already returned, so
 # code does the filtering and the model never compares numbers itself.
@@ -129,7 +139,7 @@ SEARCH_AWARDS_DECLARATION = {
                 ),
             },
         },
-        "required": [],
+        "required": list(QUOTE_ARGS),
     },
 }
 
@@ -138,16 +148,25 @@ def _normalize(text: str) -> str:
     return " ".join(text.casefold().split())
 
 
-def _explicit_date(quote: str, expected: str) -> bool:
+def _explicit_date(quote: str, expected: str, today: date) -> bool:
     if re.search(rf"\b{re.escape(expected)}\b", quote):
         return True
-    normalized = _normalize(quote).replace(",", "")
+    normalized = _normalize(quote).strip(_QUOTE_STRIP).removeprefix("on ").replace(",", "")
+    normalized = re.sub(r"\b(\d{1,2})(?:st|nd|rd|th)\b", r"\1", normalized)
     for pattern in ("%B %d %Y", "%b %d %Y", "%d %B %Y", "%d %b %Y"):
         try:
             if datetime.strptime(normalized, pattern).date().isoformat() == expected:
                 return True
         except ValueError:
             pass
+    for pattern in ("%B %d", "%b %d", "%d %B", "%d %b"):
+        for year in (today.year, today.year + 1):
+            try:
+                candidate = datetime.strptime(f"{normalized} {year}", f"{pattern} %Y").date()
+            except ValueError:
+                continue
+            if candidate >= today:
+                return candidate.isoformat() == expected
     return False
 
 
@@ -160,6 +179,21 @@ def missing_details(args: dict, user_text: str) -> list[str]:
         if not quote or quote not in said:
             missing.append(detail)
     return missing
+
+
+def _recover_quotes(args: dict, user_text: str) -> None:
+    """Recover omitted evidence only from literal airport codes and a single date."""
+    missing = missing_details(args, user_text)
+    for field in ("origin", "destination"):
+        code = args.get(field)
+        if field in missing and isinstance(code, str) and re.fullmatch(r"[A-Za-z]{3}", code):
+            match = re.search(rf"\b{code}\b", user_text, re.I)
+            if match:
+                args[f"{field}_quote"] = match[0]
+    if "departure date" in missing:
+        dates = {match[0] for match in _DATE_QUOTE.finditer(user_text)}
+        if len(dates) == 1:
+            args["date_quote"] = dates.pop()
 
 
 def run_search_tool(
@@ -177,6 +211,7 @@ def run_search_tool(
     the user to clarify. Award search failures also produce an error payload,
     so the LLM can tell the user instead of the whole chat request failing."""
     args = dict(args)
+    _recover_quotes(args, user_text)
     base = context.model_dump(mode="json", exclude_none=True) if context else {}
     evidence = dict(args)
     for quote, field in QUOTE_ARGS.items():
@@ -190,8 +225,9 @@ def run_search_tool(
             "error": "Missing trip details",
             "missing": missing,
             "instruction": (
-                "The user hasn't given these yet. Ask the user for them in one short "
-                "question. Do not guess them or use today's date."
+                "These details have no matching evidence. If the user supplied them, retry "
+                "with quotes copied exactly from their words. Otherwise ask for them in one "
+                "short question. Do not guess them or use today's date."
             ),
         }, []
 
@@ -221,6 +257,7 @@ def run_search_tool(
     normalized = criteria.model_dump(mode="json", exclude_none=True)
     uncertain = []
     if require_confirmation and not confirmed:
+        today = max(airport_today(origin) for origin in criteria.origin_codes)
         for quote, field in QUOTE_ARGS.items():
             key = "departure_date" if field == "departure date" else field
             if key in base and (key not in args or args[key] == base[key]):
@@ -228,11 +265,11 @@ def run_search_tool(
             quoted = str(args.get(quote, ""))
             codes = getattr(criteria, f"{key}_codes", [])
             if (codes and any(not re.search(rf"\b{code}\b", quoted, re.I) for code in codes)) or (
-                key == "departure_date" and not _explicit_date(quoted, normalized["departure_date"])
+                key == "departure_date" and not _explicit_date(quoted, normalized["departure_date"], today)
             ):
                 uncertain.append(field)
         end = normalized.get("departure_date_end")
-        if end and end != base.get("departure_date_end") and end not in str(args.get("date_quote", "")):
+        if end and end != normalized["departure_date"] and end != base.get("departure_date_end") and end not in str(args.get("date_quote", "")):
             uncertain.append("departure date range")
     if uncertain:
         return {"confirmation": True, "criteria": normalized, "missing": uncertain,
