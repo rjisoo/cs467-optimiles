@@ -25,7 +25,7 @@ const details = (trips: FlightTrip[] = [trip()]): TripDetailsResponse => ({
 const renderResults = () => render(<AvailabilityResults searchId="one" response={{ reply: '', results: [award] }} />)
 
 describe('live trip expansion', () => {
-  it('keeps trip filtering in other cabins when a summary-only estimate ties for Best', async () => {
+  it('keeps Best on the trip with fees across cabin tabs instead of a tied before-fees summary', async () => {
     const user = userEvent.setup()
     const economy = { ...award, source: 'american', points_cost: 15000, cash_fare_usd: 300 }
     const business = { ...economy, cabin: 'business' as const, points_cost: 40000, cash_fare_usd: 805.6 }
@@ -41,8 +41,9 @@ describe('live trip expansion', () => {
     await user.click(screen.getByRole('button', { name: /Best estimated value/ }))
     expect(screen.getAllByRole('article')).toHaveLength(1)
     expect(screen.getByRole('article', { name: 'Flight AA131' })).toHaveTextContent('Best value')
+    // The economy summary's 2.00¢ leaves fees out, so it no longer ties and no economy trip is shown.
     await user.click(screen.getByRole('tab', { name: 'Economy' }))
-    expect(screen.getAllByRole('article')).toHaveLength(2)
+    expect(screen.queryAllByRole('article')).toHaveLength(0)
     await user.click(screen.getByRole('tab', { name: 'Business' }))
     expect(screen.queryByRole('article', { name: 'Flight AA132' })).not.toBeInTheDocument()
     expect(fetch).toHaveBeenCalledTimes(1)
@@ -65,7 +66,7 @@ describe('live trip expansion', () => {
     expect(screen.getByRole('article', { name: 'Flight AA123' })).toHaveTextContent('Best value')
   })
 
-  it('selects a summary-only winner before loading and keeps its lower-valued trip details accessible', async () => {
+  it('selects a summary winner before loading, then the trip with fees once trips load', async () => {
     const user = userEvent.setup()
     const first = { ...award, source: 'american', points_cost: 15000, cash_fare_usd: 245.6 }
     const second = { ...first, availability_id: 'provider-2', source: 'united', program: 'United MileagePlus', points_cost: 20000 }
@@ -81,16 +82,18 @@ describe('live trip expansion', () => {
     expect(screen.queryByRole('row', { name: 'Tue, Dec 1 United MileagePlus' })).not.toBeInTheDocument()
     expect(fetch).not.toHaveBeenCalled()
     await user.click(screen.getByRole('button', { name: 'View Economy trips for 15,000 points' }))
-    expect(await screen.findAllByRole('article')).toHaveLength(2)
-    expect(best).toHaveTextContent('1.64¢ / pt')
-    expect(screen.getByRole('row', { name: 'Tue, Dec 1 American AAdvantage' })).toHaveTextContent('Best value')
-    for (const flight of screen.getAllByRole('article')) expect(flight).not.toHaveTextContent('Best value')
+    // The 1.64¢ summary leaves fees out, so the loaded 1.60¢ trip with fees takes Best.
+    expect(await screen.findByRole('article', { name: 'Flight AA123' })).toHaveTextContent('Best value')
+    expect(best).toHaveTextContent('1.60¢ / pt')
+    expect(screen.getAllByRole('article')).toHaveLength(1)
+    expect(screen.getByRole('row', { name: 'Tue, Dec 1 American AAdvantage' })).not.toHaveTextContent('Best value')
     await user.click(best)
     expect(screen.getByRole('row', { name: 'Tue, Dec 1 United MileagePlus' })).toBeVisible()
+    expect(screen.getAllByRole('article')).toHaveLength(2)
     expect(fetch).toHaveBeenCalledTimes(1)
   })
 
-  it('awards the highest trip estimate even without fees, seats, cabin confirmation or passenger count', async () => {
+  it('ranks a trip with fees above a higher before-fees estimate and labels the latter', async () => {
     const user = userEvent.setup()
     const pricedAward = { ...award, source: 'american', points_cost: 15000, cash_fare_usd: 245.6 }
     vi.mocked(fetch).mockResolvedValueOnce(Response.json(details([
@@ -100,20 +103,24 @@ describe('live trip expansion', () => {
     ])))
     render(<AvailabilityResults searchId="incomplete-winner" response={{ reply: '', results: [pricedAward] }} />)
     await user.click(screen.getByRole('button', { name: 'View Economy trips for 15,000 points' }))
-    const winner = await screen.findByRole('article', { name: 'Flight AA124' })
-    expect(winner).toHaveTextContent('2.46¢ / pt')
+    const incomplete = await screen.findByRole('article', { name: 'Flight AA124' })
+    expect(incomplete).toHaveTextContent('2.46¢ / pt')
+    expect(incomplete).toHaveTextContent('Before fees')
+    expect(incomplete).not.toHaveTextContent('Best value')
+    const winner = screen.getByRole('article', { name: 'Flight AA123' })
+    expect(winner).toHaveTextContent('1.60¢ / pt')
     expect(winner).toHaveTextContent('Best value')
-    expect(screen.getByRole('article', { name: 'Flight AA123' })).not.toHaveTextContent('Best value')
     const best = screen.getByRole('button', { name: /Best estimated value/ })
-    expect(best).toHaveTextContent('2.46¢ / pt')
+    expect(best).toHaveTextContent('1.60¢ / pt')
     await user.click(best)
     expect(screen.getAllByRole('article')).toHaveLength(1)
-    expect(screen.getByRole('article', { name: 'Flight AA124' })).toBeVisible()
-    await user.click(screen.getByRole('button', { name: /estimated 2.46 cents per point/ }))
-    expect(screen.getByRole('dialog')).toHaveTextContent('Estimates with missing information are included.')
+    expect(screen.getByRole('article', { name: 'Flight AA123' })).toBeVisible()
+    await user.click(within(screen.getByRole('article', { name: 'Flight AA123' }))
+      .getByRole('button', { name: /estimated 1.60 cents per point/ }))
+    expect(screen.getByRole('dialog')).toHaveTextContent('Estimates that include fees rank ahead of before-fees estimates')
   })
 
-  it('keeps fee assumptions in the calculation popover without adding badge labels', async () => {
+  it('labels before-fees estimates on the card and explains fee assumptions in the popover', async () => {
     const user = userEvent.setup()
     const pricedAward = { ...award, source: 'american', search_passengers: 1,
       points_cost: 15000, cash_fare_usd: 245.6, cents_per_point: 9.99 }
@@ -131,7 +138,7 @@ describe('live trip expansion', () => {
     expect(screen.queryByText(/9.99/)).not.toBeInTheDocument()
     expect(screen.getByText('Est. cash fare: $245.60 USD / person')).toBeVisible()
     expect(screen.getByText('Good', { exact: true })).toBeVisible()
-    expect(screen.queryByText(/before fees/i)).not.toBeInTheDocument()
+    expect(screen.getByText('Before fees')).toBeVisible()
     await user.click(screen.getByRole('button', { name: /estimated 1.64 cents per point/ }))
     const startingEstimate = screen.getByRole('dialog')
     expect(startingEstimate).toHaveTextContent('$245.60 ÷ 15,000 × 100 ≈ 1.64¢ per point before fees')
@@ -149,7 +156,7 @@ describe('live trip expansion', () => {
     expect(unknown).not.toHaveTextContent('Value unavailable')
     expect(unknown).toHaveTextContent('1.36¢ / pt')
     expect(unknown).toHaveTextContent('Good')
-    expect(unknown).not.toHaveTextContent(/before fees/i)
+    expect(unknown).toHaveTextContent('Before fees')
     expect(unknown).not.toHaveTextContent('Best value')
     expect(unknown).not.toHaveTextContent('$0.00')
     await user.click(within(unknown).getByRole('button', { name: /estimated 1.36 cents per point/ }))
@@ -206,6 +213,38 @@ describe('live trip expansion', () => {
     expect(explanation).toHaveTextContent('($245.60 − $5.60) ÷ 15,000 × 100')
     expect(explanation).toHaveTextContent('Fee currency is inferred from the matching availability summary.')
     expect(explanation).not.toHaveTextContent('$11.20')
+  })
+
+  it('hides trips reporting fewer seats than the party and says how many were hidden', async () => {
+    const user = userEvent.setup()
+    const pricedAward = { ...award, source: 'american', search_passengers: 2, cash_fare_usd: 245.6, points_cost: 15000 }
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json(details([
+      trip({ is_mixed_cabin: false }),
+      trip({ trip_id: 'one-seat', flight_numbers: ['AA124'], points: 12000, reported_seats: 1, is_mixed_cabin: false }),
+      trip({ trip_id: 'zero', flight_numbers: ['AA125'], reported_seats: 0, is_mixed_cabin: false }),
+      trip({ trip_id: 'unknown', flight_numbers: ['AA126'], reported_seats: null, is_mixed_cabin: false }),
+    ])))
+    render(<AvailabilityResults searchId="seats" response={{ reply: '', results: [pricedAward] }} />)
+    await user.click(screen.getByRole('button', { name: 'View Economy trips for 15,000 points' }))
+    await screen.findByRole('article', { name: 'Flight AA123' })
+    expect(screen.queryByRole('article', { name: 'Flight AA124' })).not.toBeInTheDocument()
+    expect(screen.getByRole('article', { name: 'Flight AA125' })).toBeVisible()
+    expect(screen.getByRole('article', { name: 'Flight AA126' })).toBeVisible()
+    expect(screen.getByText('1 trip hidden: fewer than 2 seats reported.')).toBeVisible()
+  })
+
+  it('explains an empty trip list when every trip has too few seats', async () => {
+    const user = userEvent.setup()
+    const pricedAward = { ...award, source: 'american', search_passengers: 3, cash_fare_usd: 245.6, points_cost: 15000 }
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json(details([
+      trip({ reported_seats: 2, is_mixed_cabin: false }),
+      trip({ trip_id: 'one-seat', flight_numbers: ['AA124'], reported_seats: 1, is_mixed_cabin: false }),
+    ])))
+    render(<AvailabilityResults searchId="no-seats" response={{ reply: '', results: [pricedAward] }} />)
+    await user.click(screen.getByRole('button', { name: 'View Economy trips for 15,000 points' }))
+    expect(await screen.findByText('2 trips hidden: fewer than 3 seats reported.')).toBeVisible()
+    expect(screen.queryByRole('article')).not.toBeInTheDocument()
+    expect(screen.queryByText(/trips were returned for this availability/)).not.toBeInTheDocument()
   })
 
   it('shows an estimate with an explicit qualifier when full-cabin evidence is unavailable', async () => {

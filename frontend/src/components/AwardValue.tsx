@@ -22,7 +22,8 @@ export default function AwardValue({ value, best = false, compact = false }: Pro
   const ratingLabel = rating[0].toUpperCase() + rating.slice(1)
   const formattedCpp = cpp.toFixed(2)
   const beforeFees = feeBasis === 'before_fees'
-  const qualifier = pointsBasis === 'trip' && !cabinVerified ? 'Cabin unverified' : ''
+  const qualifier = [beforeFees && 'Before fees', pointsBasis === 'trip' && !cabinVerified && 'Cabin unverified']
+    .filter(Boolean).join(' · ')
 
   return (
     <div className="award-value" data-compact={compact}>
@@ -62,7 +63,7 @@ export default function AwardValue({ value, best = false, compact = false }: Pro
             {pointsBasis === 'trip' && !cabinVerified && <p>The provider has not confirmed that the entire trip is in this cabin.</p>}
             <p>The cash fare comes from Google Flights via SerpApi for the same route, date and cabin. It may be a different flight.</p>
             <p>Ratings use fixed CPP thresholds: Bad below 1¢; Fair from 1¢; Good from 1.3¢; Great from 1.7¢; Exceptional from 2.5¢. These are comparison tiers, not a loyalty program’s point valuation.</p>
-            {best && <p>Best value is the highest displayed CPP among summaries and loaded trips matching the current filters. Ties share the badge. Estimates with missing information are included.</p>}
+            {best && <p>Best value is the highest displayed CPP among summaries and loaded trips matching the current filters. Ties share the badge. Estimates that include fees rank ahead of before-fees estimates, and trips reporting fewer seats than your party are skipped.</p>}
           </Popover.Content>
         </Popover.Portal>
       </Popover.Root>

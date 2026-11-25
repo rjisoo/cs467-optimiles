@@ -174,24 +174,29 @@ describe('estimated loaded-trip redemption value', () => {
 })
 
 describe('loaded comparison scope', () => {
-  it('includes displayed summary estimates before loading and lets a higher incomplete trip win later', () => {
+  it('ranks before-fees summaries until trips with fees load, then prefers estimates that include fees', () => {
     const offers = [valuedResult, { ...valuedResult, availability_id: 'hidden', points_cost: 20000, cash_fare_usd: 1000 }]
     let comparison = compareLoadedTrips(offers, [])
     expect(compareDisplayedValues(offers, comparison)).toEqual({ bestValue: 1.64,
       bestKeys: new Set(), bestSummaries: new Set([valuedResult]) })
-    const winner = another({ points: 10000, taxes_minor: null, reported_seats: null, is_mixed_cabin: null })
-    comparison = compareLoadedTrips(offers, [loadedTrip, winner])
+    const beforeFees = another({ points: 10000, taxes_minor: null, reported_seats: null, is_mixed_cabin: null })
+    comparison = compareLoadedTrips(offers, [loadedTrip, beforeFees])
+    // The summary now matches loadedTrip's fee-inclusive value, so it shares the tie.
+    expect(compareDisplayedValues(offers, comparison)).toEqual({ bestValue: 1.6,
+      bestKeys: new Set([tripValueKey(loadedTrip)]), bestSummaries: new Set([valuedResult]) })
+    comparison = compareLoadedTrips(offers, [beforeFees])
     expect(compareDisplayedValues(offers, comparison)).toEqual({ bestValue: 2.46,
-      bestKeys: new Set([tripValueKey(winner)]), bestSummaries: new Set() })
+      bestKeys: new Set([tripValueKey(beforeFees)]), bestSummaries: new Set() })
   })
 
-  it('shares summary and trip ties using the rounded displayed CPP, including zero', () => {
+  it('shares summary and trip ties using the rounded displayed CPP and never awards zero', () => {
     const tied = another({ points: 15001 })
     const comparison = compareLoadedTrips([valuedResult], [loadedTrip, tied])
     expect(compareDisplayedValues([valuedResult], comparison)).toEqual({ bestValue: 1.6,
       bestKeys: new Set([tripValueKey(loadedTrip), tripValueKey(tied)]), bestSummaries: new Set([valuedResult]) })
     const zero = { ...loadedTrip, taxes_minor: 24560, cash_fees_usd: 245.6 }
-    expect(compareDisplayedValues([valuedResult], compareLoadedTrips([valuedResult], [zero])).bestValue).toBe(0)
+    expect(compareDisplayedValues([valuedResult], compareLoadedTrips([valuedResult], [zero])).bestValue).toBeNull()
+    expect(compareLoadedTrips([valuedResult], [zero]).bestKeys.size).toBe(0)
     const unavailable = { ...valuedResult, cash_fare_usd: null }
     expect(compareDisplayedValues([unavailable], compareLoadedTrips([unavailable], [loadedTrip])).bestValue).toBeNull()
   })
@@ -214,17 +219,24 @@ describe('loaded comparison scope', () => {
     expect(getSummaryValue(valuedResult, comparison)?.cpp).toBe(1.6)
   })
 
-  it('ranks displayed estimates despite missing fees, seats, cabin confirmation or passenger context', () => {
-    for (const overrides of [{ taxes_minor: null }, { reported_seats: 1 }, { reported_seats: null },
-      { reported_seats: 2.5 }, { is_mixed_cabin: null }]) {
+  it('ranks estimates with unknown seats or cabin confirmation, but not missing fees or too few seats', () => {
+    for (const overrides of [{ reported_seats: null }, { reported_seats: 2.5 }, { is_mixed_cabin: null }]) {
       const winner = another({ points: 12000, ...overrides })
       const comparison = compareLoadedTrips([valuedResult], [loadedTrip, winner])
       expect(comparison.bestKeys).toEqual(new Set([tripValueKey(winner)]))
       expect(comparison.groups[0].entries).toHaveLength(2)
     }
+    // search_passengers is 2: a trip reporting 1 seat, or one whose higher CPP leaves fees out, can't win.
+    for (const overrides of [{ taxes_minor: null }, { reported_seats: 1 }]) {
+      const loser = another({ points: 12000, ...overrides })
+      const comparison = compareLoadedTrips([valuedResult], [loadedTrip, loser])
+      expect(comparison.bestKeys).toEqual(new Set([tripValueKey(loadedTrip)]))
+      expect(compareDisplayedValues([valuedResult], comparison).bestKeys).toEqual(new Set([tripValueKey(loadedTrip)]))
+      expect(comparison.groups[0].entries).toHaveLength(2)
+    }
     expect(compareLoadedTrips([{ ...valuedResult, search_passengers: undefined }], [loadedTrip, another()]).bestKeys.size).toBe(1)
-    expect(compareLoadedTrips([{ ...valuedResult, cash_fare_usd: 1 }], [loadedTrip, another()]).bestKeys)
-      .toEqual(new Set([tripValueKey(loadedTrip), tripValueKey(another())]))
+    // A $1 fare minus $5.60 fees is a negative CPP, which never wins.
+    expect(compareLoadedTrips([{ ...valuedResult, cash_fare_usd: 1 }], [loadedTrip, another()]).bestKeys.size).toBe(0)
     expect(compareLoadedTrips([valuedResult], [another({ is_mixed_cabin: true })]).bestKeys.size).toBe(0)
   })
 
