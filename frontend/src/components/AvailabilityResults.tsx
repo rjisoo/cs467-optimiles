@@ -1,7 +1,7 @@
 import { Fragment, useId, useRef, useState, type ReactNode } from 'react'
 import type { ChatCabin, ChatResponse } from '../services/chat-response'
 import type { SearchResponse } from '../services/search-api'
-import { cabinOptions, compareDisplayedValues, compareLoadedTrips, groupSummaries, sortSummaries, type SummarySort } from '../services/availability-presentation'
+import { cabinOptions, compareDisplayedValues, compareLoadedTrips, groupSummaries, searchPassengers, sortSummaries, type SummarySort } from '../services/availability-presentation'
 import { awardDateLabel } from '../lib/trip-date'
 import AvailabilitySummaryRow from './AvailabilitySummaryRow'
 import AvailabilityPagination from './AvailabilityPagination'
@@ -190,6 +190,7 @@ function SearchResults({ response, message }: Props) {
                     {!pending && failedIds.length === 0 && <TripDetails key={`${open?.selection}-${selectedHighlight}`} cabin={open?.cabin ?? cabin}
                       entries={allValues.entries.filter((entry) => summary.offers.includes(entry.result))}
                       bestKeys={bestKeys} visibleKeys={selectedKeys} summaryOnlyCabins={summaryOnlyCabins}
+                      passengers={summary.offers[0] ? searchPassengers(summary.offers[0]) : null}
                       response={{
                         trips: loaded.flatMap((detail) => detail.trips),
                         booking_links: [...new Map(loaded.flatMap((detail) => detail.booking_links)

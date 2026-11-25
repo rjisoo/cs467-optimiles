@@ -147,6 +147,27 @@ def test_quote_recovery_does_not_invent_missing_details(monkeypatch, message):
     search.assert_not_called()
 
 
+@pytest.mark.parametrize("message", ["jfk to the sea on dec 6", "jfk to where the sea is dec 6"])
+def test_ordinary_words_are_not_recovered_as_airport_codes(monkeypatch, message):
+    search = Mock(side_effect=AssertionError("An ordinary word must not confirm an airport"))
+    monkeypatch.setattr("backend.llm.tools.search_awards", search)
+    args = {"origin": "JFK", "destination": "SEA", "departure_date": "2026-12-06"}
+    response = run(FakeClient(tool_response(args), text_response("Which destination?")), message)
+    assert response.status in {"clarification", "confirmation"}
+    assert "destination" in response.missing_fields
+    search.assert_not_called()
+
+
+@pytest.mark.parametrize("message", ["jfk to sea dec 6", "jfk-sea dec 6", "from jfk to sea dec 6", "JFK SEA dec 6"])
+def test_routed_or_uppercase_codes_are_recovered(monkeypatch, message):
+    search = Mock(wraps=search_awards)
+    monkeypatch.setattr("backend.llm.tools.search_awards", search)
+    args = {"origin": "JFK", "destination": "SEA", "departure_date": "2026-12-06"}
+    response = run(FakeClient(tool_response(args), text_response("Available awards.")), message)
+    search.assert_called_once()
+    assert response.missing_fields == []
+
+
 def test_recovered_date_quote_still_checks_the_proposed_date(monkeypatch):
     search = Mock(side_effect=AssertionError("Mismatched date must not search"))
     monkeypatch.setattr("backend.llm.tools.search_awards", search)

@@ -182,6 +182,33 @@ function tripEvidence(trip: FlightTrip): string {
       segment.departs_at_local, segment.arrives_at_local])])
 }
 
+// Best value only ranks positive estimates, and prefers ones that include fees: leaving
+// fees out inflates CPP, so before-fees estimates compete only when nothing else has a value.
+function pickBest<T>(items: T[], valueOf: (item: T) => TripValue | null): { best: number | null; winners: T[] } {
+  const valued = items.filter((item) => (valueOf(item)?.cpp ?? 0) > 0)
+  const withFees = valued.filter((item) => valueOf(item)!.feeBasis !== 'before_fees')
+  const pool = withFees.length ? withFees : valued
+  if (!pool.length) return { best: null, winners: [] }
+  const best = Math.max(...pool.map((item) => valueOf(item)!.cpp))
+  return { best, winners: pool.filter((item) => valueOf(item)!.cpp === best) }
+}
+
+// True when a trip reports fewer seats than the party needs, matching the backend's summary
+// filter. Unknown seats still fit; seats.aero reports 0 when it doesn't know the count.
+export function tooFewSeats(trip: FlightTrip, passengers: number | null | undefined): boolean {
+  const seats = trip.reported_seats
+  return passengers != null && !!seats && seats < passengers
+}
+
+function seatsFit(entry: ValueEntry, passengers: number | null): boolean {
+  return !tooFewSeats(entry.trip, passengers)
+}
+
+export function searchPassengers(result: ChatResult): number | null {
+  return result.search_passengers != null && Number.isSafeInteger(result.search_passengers)
+    && result.search_passengers >= 1 && result.search_passengers <= 9 ? result.search_passengers : null
+}
+
 export function compareLoadedTrips(results: ChatResult[], trips: FlightTrip[], parentResults = results): ValueComparison {
   const unique = new Map<string, FlightTrip>()
   const conflicts = new Set<string>()
@@ -202,8 +229,7 @@ export function compareLoadedTrips(results: ChatResult[], trips: FlightTrip[], p
     const conflicting = conflicts.has(key)
       || [...parents, ...allParents].some((row) => parentIdentity(row) !== parentIdentity(result))
     const value = conflicting ? null : getTripValue(result, trip)
-    const passengers = result.search_passengers != null && Number.isSafeInteger(result.search_passengers)
-      && result.search_passengers >= 1 && result.search_passengers <= 9 ? result.search_passengers : null
+    const passengers = searchPassengers(result)
     const groupKey = JSON.stringify([result.origin, result.destination, result.departure_date, result.cabin, passengers])
     const eligible = value !== null
     const entry: ValueEntry = { key, trip, result, value, groupKey, eligible }
@@ -226,10 +252,10 @@ export function compareLoadedTrips(results: ChatResult[], trips: FlightTrip[], p
   }
   const bestKeys = new Set<string>()
   for (const group of groups.values()) {
-    const eligible = group.entries.filter((entry) => entry.eligible)
-    if (!eligible.length) continue
-    group.bestValue = Math.max(...eligible.map((entry) => entry.value!.cpp))
-    for (const entry of eligible) if (entry.value!.cpp === group.bestValue) {
+    const rankable = group.entries.filter((entry) => entry.eligible && seatsFit(entry, group.passengers))
+    const { best, winners } = pickBest(rankable, (entry) => entry.value)
+    group.bestValue = best
+    for (const entry of winners) {
       group.bestKeys.add(entry.key)
       bestKeys.add(entry.key)
     }
@@ -250,11 +276,13 @@ export function getSummaryValue(result: ChatResult, comparison: ValueComparison)
 export function compareDisplayedValues(results: ChatResult[], comparison: ValueComparison, summaryComparison = comparison) {
   const summaries = groupSummaries(results).flatMap((summary) => Object.values(summary.cabins)
     .map((result) => ({ result, value: getSummaryValue(result, summaryComparison) })))
-  const values = [...summaries, ...comparison.entries].flatMap(({ value }) => value ? [value.cpp] : [])
-  const bestValue = values.length ? Math.max(...values) : null
+  const trips = comparison.entries.filter((entry) => seatsFit(entry, searchPassengers(entry.result)))
+  const candidates = [...summaries.map((summary) => ({ summary, value: summary.value })),
+    ...trips.map((entry) => ({ entry, value: entry.value }))]
+  const { best: bestValue, winners } = pickBest(candidates, ({ value }) => value)
   return {
     bestValue,
-    bestKeys: new Set(comparison.entries.filter(({ value }) => value && value.cpp === bestValue).map(({ key }) => key)),
-    bestSummaries: new Set(summaries.filter(({ value }) => value && value.cpp === bestValue).map(({ result }) => result)),
+    bestKeys: new Set(winners.flatMap((winner) => 'entry' in winner ? [winner.entry.key] : [])),
+    bestSummaries: new Set(winners.flatMap((winner) => 'summary' in winner ? [winner.summary.result] : [])),
   }
 }

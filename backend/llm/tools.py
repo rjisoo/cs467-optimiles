@@ -181,15 +181,31 @@ def missing_details(args: dict, user_text: str) -> list[str]:
     return missing
 
 
+def _find_airport_code(code: str, user_text: str) -> str | None:
+    """Where the user literally typed this airport code, if anywhere.
+
+    An uppercase code always counts. A lowercase one counts only next to a
+    routing word ("lax to jfk"), so ordinary words like "to the sea" or "I can"
+    aren't taken as airport codes (SEA, CAN)."""
+    code = code.upper()
+    exact = re.search(rf"\b{code}\b", user_text)
+    if exact:
+        return exact[0]
+    routed = re.search(
+        rf"\b(?:from|to|into|via)\s+({code})\b|\b({code})\s+to\b|\b({code})\s*[-–]\s*[a-z]{{3}}\b|\b[a-z]{{3}}\s*[-–]\s*({code})\b",
+        user_text, re.I)
+    return next((group for group in routed.groups() if group), None) if routed else None
+
+
 def _recover_quotes(args: dict, user_text: str) -> None:
     """Recover omitted evidence only from literal airport codes and a single date."""
     missing = missing_details(args, user_text)
     for field in ("origin", "destination"):
         code = args.get(field)
         if field in missing and isinstance(code, str) and re.fullmatch(r"[A-Za-z]{3}", code):
-            match = re.search(rf"\b{code}\b", user_text, re.I)
-            if match:
-                args[f"{field}_quote"] = match[0]
+            quote = _find_airport_code(code, user_text)
+            if quote:
+                args[f"{field}_quote"] = quote
     if "departure date" in missing:
         dates = {match[0] for match in _DATE_QUOTE.finditer(user_text)}
         if len(dates) == 1:

@@ -2,7 +2,7 @@ import { useId, useRef, useState } from 'react'
 import { Tabs } from 'radix-ui'
 import type { ChatCabin } from '../services/chat-response'
 import type { FlightTrip, TripDetailsResponse } from '../services/trip-details'
-import { cabinOptions, tripValueKey, verifiedTripFees, type ValueEntry } from '../services/availability-presentation'
+import { cabinOptions, tooFewSeats, tripValueKey, verifiedTripFees, type ValueEntry } from '../services/availability-presentation'
 import { arrivalDayOffset, formatUpdatedAt } from '../lib/trip-date'
 import AvailabilityPagination from './AvailabilityPagination'
 import Icon from './Icon'
@@ -136,9 +136,10 @@ function TripRow({ trip, route, entry, best }: { trip: FlightTrip; route?: strin
   </article>
 }
 
-export default function TripDetails({ response, cabin, route, entries = [], bestKeys, visibleKeys, summaryOnlyCabins }: {
+export default function TripDetails({ response, cabin, route, entries = [], bestKeys, visibleKeys, summaryOnlyCabins, passengers }: {
   response: Pick<TripDetailsResponse, 'trips' | 'booking_links'>; cabin: ChatCabin; route?: string
   entries?: ValueEntry[]; bestKeys?: Set<string>; visibleKeys?: Set<string>; summaryOnlyCabins?: Set<string>
+  passengers?: number | null
 }) {
   const [page, setPage] = useState(1)
   const [sort, setSort] = useState('points')
@@ -153,7 +154,10 @@ export default function TripDetails({ response, cabin, route, entries = [], best
   const fares = [...new Set(cabinEntries.map((entry) => entry.result.cash_fare_usd).filter((fare): fare is number => typeof fare === 'number'))]
   const cashFare = fares.length === 1 ? fares[0] : null
   const uniqueTrips = [...new Map(response.trips.map((trip) => [tripValueKey(trip), trip])).values()]
-  const trips = uniqueTrips.filter((trip) => trip.cabin === selectedCabin
+  const cabinTrips = uniqueTrips.filter((trip) => trip.cabin === selectedCabin)
+  // Like the backend's summary filter, hide trips that report too few seats for the party, and say so.
+  const hiddenForSeats = cabinTrips.filter((trip) => tooFewSeats(trip, passengers)).length
+  const trips = cabinTrips.filter((trip) => !tooFewSeats(trip, passengers)
     && (!visibleKeys || summaryOnlyCabins?.has(trip.cabin) || visibleKeys.has(tripValueKey(trip))))
   if (sort !== 'reported') trips.sort((a, b) => {
     if (sort === 'departure') return a.departs_at_local.localeCompare(b.departs_at_local)
@@ -193,7 +197,10 @@ export default function TripDetails({ response, cabin, route, entries = [], best
       <strong>Estimated cash fare: {dollars.format(cashFare)} per person</strong>
       <span>Same route, date and cabin; may be a different flight.</span>
     </p>}
-    {trips.length === 0 && <p role="status">No {cabinLabel?.toLowerCase()} trips were returned for this availability.</p>}
+    {trips.length === 0 && !hiddenForSeats && <p role="status">No {cabinLabel?.toLowerCase()} trips were returned for this availability.</p>}
+    {hiddenForSeats > 0 && <p role="status" className="availability-list-note">
+      {hiddenForSeats} {hiddenForSeats === 1 ? 'trip' : 'trips'} hidden: fewer than {passengers} seats reported.
+    </p>}
     {trips.length > 0 && <>
       <p className="availability-flight-scroll-hint">Scroll sideways to see all flight details.</p>
       <div className="availability-flight-rows" role="region" aria-label="Flight itineraries" tabIndex={0}>
