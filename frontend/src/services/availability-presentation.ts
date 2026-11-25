@@ -92,7 +92,8 @@ export function getPageNumbers(page: number, totalPages: number): (number | 'ell
 }
 
 export type TripValue = {
-  cpp: number; cashFare: number; fees: number; points: number; rating: ValueRating; cabin: ChatCabin
+  cpp: number; cashFare: number; fees: number | null; points: number; rating: ValueRating; cabin: ChatCabin
+  feeBasis: 'trip' | 'summary_currency' | 'before_fees'; pointsBasis: 'trip' | 'summary'; cabinVerified: boolean
 }
 export type ValueEntry = {
   key: string; trip: FlightTrip; result: ChatResult; value: TripValue | null; groupKey: string; eligible: boolean
@@ -120,7 +121,7 @@ export function verifiedTripFees(trip: FlightTrip): number | null {
   if (['qatar', 'turkish', 'singapore'].includes(trip.source)
     || trip.taxes_currency?.trim().toUpperCase() !== 'USD'
     || trip.taxes_minor === null || !Number.isSafeInteger(trip.taxes_minor) || trip.taxes_minor < 0
-    || moneyCents(trip.cash_fees_usd) !== BigInt(trip.taxes_minor)) return null
+    || (trip.cash_fees_usd !== null && moneyCents(trip.cash_fees_usd) !== BigInt(trip.taxes_minor))) return null
   return trip.taxes_minor / 100
 }
 
@@ -133,20 +134,35 @@ function matchesTrip(result: ChatResult, trip: FlightTrip): boolean {
     && (!trip.segments.at(-1)?.destination_airport || trip.segments.at(-1)?.destination_airport === result.destination)
 }
 
-export function getTripValue(result: ChatResult, trip: FlightTrip): TripValue | null {
+function calculateValue(result: ChatResult, pointsCost: number | null, fees: number | null,
+  feeBasis: TripValue['feeBasis'], pointsBasis: TripValue['pointsBasis'], cabinVerified: boolean): TripValue | null {
   const fare = moneyCents(result.cash_fare_usd)
-  const fees = verifiedTripFees(trip)
-  if (!matchesTrip(result, trip) || trip.is_mixed_cabin !== false || !positivePoints(trip.points)
-    || fare === null || fare <= 0n || fees === null) return null
-  const numerator = (fare - BigInt(trip.taxes_minor!)) * 100n
-  const points = BigInt(trip.points)
+  const feeCents = fees === null ? 0n : moneyCents(fees)
+  if (!positivePoints(pointsCost) || fare === null || fare <= 0n || feeCents === null) return null
+  const numerator = (fare - feeCents) * 100n
+  const points = BigInt(pointsCost)
   const magnitude = numerator < 0n ? -numerator : numerator
   const rounded = (magnitude * 2n + points) / (points * 2n)
   if (rounded > BigInt(Number.MAX_SAFE_INTEGER)) return null
   const cpp = Number(numerator < 0n ? -rounded : rounded) / 100
   const rating: ValueRating = cpp >= 2.5 ? 'exceptional' : cpp >= 1.7 ? 'great'
     : cpp >= 1.3 ? 'good' : cpp >= 1 ? 'fair' : 'bad'
-  return { cpp, cashFare: result.cash_fare_usd!, fees, points: trip.points, rating, cabin: result.cabin }
+  return { cpp, cashFare: result.cash_fare_usd!, fees, points: pointsCost, rating, cabin: result.cabin,
+    feeBasis, pointsBasis, cabinVerified }
+}
+
+export function getTripValue(result: ChatResult, trip: FlightTrip): TripValue | null {
+  if (!matchesTrip(result, trip) || trip.is_mixed_cabin === true) return null
+  let fees = verifiedTripFees(trip)
+  let feeBasis: TripValue['feeBasis'] = fees === null ? 'before_fees' : 'trip'
+  if (fees === null && !trip.taxes_currency?.trim() && result.taxes_currency === 'USD'
+    && !['qatar', 'turkish', 'singapore'].includes(trip.source)
+    && trip.taxes_minor !== null && Number.isSafeInteger(trip.taxes_minor) && trip.taxes_minor >= 0
+    && (trip.cash_fees_usd === null || moneyCents(trip.cash_fees_usd) === BigInt(trip.taxes_minor))) {
+    fees = trip.taxes_minor / 100
+    feeBasis = 'summary_currency'
+  }
+  return calculateValue(result, trip.points, fees, feeBasis, 'trip', trip.is_mixed_cabin === false)
 }
 
 export function tripValueKey(trip: FlightTrip): string {
@@ -155,7 +171,8 @@ export function tripValueKey(trip: FlightTrip): string {
 
 function parentIdentity(result: ChatResult): string {
   return JSON.stringify([result.source, result.availability_id, result.origin, result.destination,
-    result.departure_date, result.cabin, result.search_passengers, result.cash_fare_usd, result.points_cost])
+    result.departure_date, result.cabin, result.search_passengers, result.cash_fare_usd, result.points_cost,
+    result.taxes_currency])
 }
 
 function tripEvidence(trip: FlightTrip): string {
@@ -188,8 +205,7 @@ export function compareLoadedTrips(results: ChatResult[], trips: FlightTrip[], p
     const passengers = result.search_passengers != null && Number.isSafeInteger(result.search_passengers)
       && result.search_passengers >= 1 && result.search_passengers <= 9 ? result.search_passengers : null
     const groupKey = JSON.stringify([result.origin, result.destination, result.departure_date, result.cabin, passengers])
-    const eligible = !!value && value.cpp > 0 && passengers !== null && trip.is_mixed_cabin === false
-      && trip.reported_seats !== null && Number.isSafeInteger(trip.reported_seats) && trip.reported_seats >= passengers
+    const eligible = value !== null
     const entry: ValueEntry = { key, trip, result, value, groupKey, eligible }
     entries.push(entry)
     let group = groups.get(groupKey)
@@ -211,7 +227,7 @@ export function compareLoadedTrips(results: ChatResult[], trips: FlightTrip[], p
   const bestKeys = new Set<string>()
   for (const group of groups.values()) {
     const eligible = group.entries.filter((entry) => entry.eligible)
-    if (eligible.length < 2 || new Set(eligible.map((entry) => entry.value!.cashFare)).size !== 1) continue
+    if (!eligible.length) continue
     group.bestValue = Math.max(...eligible.map((entry) => entry.value!.cpp))
     for (const entry of eligible) if (entry.value!.cpp === group.bestValue) {
       group.bestKeys.add(entry.key)
@@ -225,6 +241,20 @@ export function getSummaryValue(result: ChatResult, comparison: ValueComparison)
   const matched = comparison.entries.filter((entry) => parentIdentity(entry.result) === parentIdentity(result)
     && entry.trip.points === result.points_cost)
   const value = matched[0]?.value
-  if (!value || matched.some((entry) => !entry.value || JSON.stringify(entry.value) !== JSON.stringify(value))) return null
+  if (!value || matched.some((entry) => !entry.value || JSON.stringify(entry.value) !== JSON.stringify(value))) {
+    return calculateValue(result, result.points_cost, null, 'before_fees', 'summary', true)
+  }
   return value
+}
+
+export function compareDisplayedValues(results: ChatResult[], comparison: ValueComparison, summaryComparison = comparison) {
+  const summaries = groupSummaries(results).flatMap((summary) => Object.values(summary.cabins)
+    .map((result) => ({ result, value: getSummaryValue(result, summaryComparison) })))
+  const values = [...summaries, ...comparison.entries].flatMap(({ value }) => value ? [value.cpp] : [])
+  const bestValue = values.length ? Math.max(...values) : null
+  return {
+    bestValue,
+    bestKeys: new Set(comparison.entries.filter(({ value }) => value && value.cpp === bestValue).map(({ key }) => key)),
+    bestSummaries: new Set(summaries.filter(({ value }) => value && value.cpp === bestValue).map(({ result }) => result)),
+  }
 }

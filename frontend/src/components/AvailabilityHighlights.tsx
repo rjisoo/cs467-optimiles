@@ -5,18 +5,17 @@ type Props = {
   scope: string
   bestValue: number | null
   lowestPoints: number | null
-  eligibleCount: number
   loadedCount: number
   selected: 'value' | 'points' | null
   onSelect: (kind: 'value' | 'points' | null) => void
 }
 
 export default function AvailabilityHighlights({ cabinLabel, scope, bestValue, lowestPoints,
-  eligibleCount, loadedCount, selected, onSelect }: Props) {
+  loadedCount, selected, onSelect }: Props) {
   const highlights = [
     { kind: 'value' as const, label: 'Best estimated value', metric: bestValue,
       formatted: bestValue === null ? '' : `${bestValue.toFixed(2)}¢ / pt`,
-      detail: `${eligibleCount} eligible loaded ${eligibleCount === 1 ? 'trip' : 'trips'}` },
+      detail: 'Highest displayed CPP' },
     { kind: 'points' as const, label: 'Lowest points', metric: lowestPoints,
       formatted: lowestPoints === null ? '' : `${lowestPoints.toLocaleString('en-US')} pts`,
       detail: `Among ${loadedCount} loaded ${loadedCount === 1 ? 'trip' : 'trips'}` },
@@ -51,7 +50,7 @@ export default function AvailabilityHighlights({ cabinLabel, scope, bestValue, l
         ))}
       </div>
       {bestValue !== null && <p className="availability-highlight-note">
-        Higher CPP means more value · Cash fares are estimates · Unknown fees are excluded from value comparisons
+        Higher CPP means more value · Cash fares are estimates
       </p>}
     </section>
   )
